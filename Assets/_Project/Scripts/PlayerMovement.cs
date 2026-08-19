@@ -1,7 +1,7 @@
 using UnityEngine;
 
 // This namespace gives us access to Unity's newer Input System.
-// We will use it to read keyboard input such as W, A, S, D, and Shift.
+// We use it to read keyboard input such as W, A, S, D, Shift, and Space.
 using UnityEngine.InputSystem;
 
 /*
@@ -12,6 +12,7 @@ using UnityEngine.InputSystem;
  * This script currently handles:
  * - Walking with W, A, S, and D
  * - Sprinting while holding Left Shift
+ * - Jumping with Space
  * - Gravity so the player stays on the ground
  *
  * This script uses Unity's CharacterController component
@@ -25,7 +26,7 @@ public class PlayerMovement : MonoBehaviour
     /*
      * REGION: Component References
      *
-     * This region stores references to other Unity components
+     * This region stores references to Unity components
      * that this script needs in order to work.
      */
 
@@ -33,8 +34,8 @@ public class PlayerMovement : MonoBehaviour
     /*
      * HEADER: Component References
      *
-     * This header keeps required Unity component references
-     * grouped together in the Inspector.
+     * This header groups together required Unity component references
+     * inside the Inspector.
      */
 
     [SerializeField]
@@ -49,8 +50,7 @@ public class PlayerMovement : MonoBehaviour
     /*
      * REGION: Movement Settings
      *
-     * This region contains the values that control how quickly
-     * the player walks and sprints.
+     * This region contains values that control walking and sprinting.
      */
 
     [Header("Movement Settings")]
@@ -58,8 +58,6 @@ public class PlayerMovement : MonoBehaviour
      * HEADER: Movement Settings
      *
      * These values control the player's movement speed.
-     * Because they are serialized, we can adjust them directly
-     * in the Unity Inspector without editing the script.
      */
 
     [SerializeField]
@@ -67,8 +65,31 @@ public class PlayerMovement : MonoBehaviour
     private float walkSpeed = 5f;
 
     [SerializeField]
-    [Tooltip("How fast the player moves while holding the sprint key.")]
+    [Tooltip("How fast the player moves while holding Left Shift.")]
     private float sprintSpeed = 8f;
+
+    #endregion
+
+
+    #region Jump Settings
+
+    /*
+     * REGION: Jump Settings
+     *
+     * This region contains the value that controls
+     * how high the player can jump.
+     */
+
+    [Header("Jump Settings")]
+    /*
+     * HEADER: Jump Settings
+     *
+     * This value controls the player's jump height.
+     */
+
+    [SerializeField]
+    [Tooltip("How high the player jumps in Unity units.")]
+    private float jumpHeight = 1.5f;
 
     #endregion
 
@@ -79,7 +100,7 @@ public class PlayerMovement : MonoBehaviour
      * REGION: Gravity Settings
      *
      * CharacterController does not automatically use gravity.
-     * Because of that, we need to apply our own downward force.
+     * Because of that, this script applies gravity manually.
      */
 
     [Header("Gravity Settings")]
@@ -94,7 +115,7 @@ public class PlayerMovement : MonoBehaviour
     private float gravity = -20f;
 
     [SerializeField]
-    [Tooltip("Small downward force used while grounded to keep the player touching the floor.")]
+    [Tooltip("A small downward force used while grounded to keep the player touching the floor.")]
     private float groundedForce = -2f;
 
     #endregion
@@ -105,11 +126,13 @@ public class PlayerMovement : MonoBehaviour
     /*
      * REGION: Private Variables
      *
-     * These variables are used internally by the script while the game runs.
-     * They do not need to be changed in the Inspector.
+     * These variables are used internally while the game is running.
+     * They do not need to be adjusted in the Inspector.
      */
 
-    // Stores the player's current vertical speed caused by gravity.
+    // Stores the player's current vertical speed.
+    // Positive values move the player upward.
+    // Negative values move the player downward.
     private float verticalVelocity;
 
     #endregion
@@ -120,19 +143,20 @@ public class PlayerMovement : MonoBehaviour
     /*
      * REGION: Unity Methods
      *
-     * Unity automatically calls methods such as Awake() and Update().
+     * Unity automatically calls these methods.
      *
      * Awake runs when the object is first loaded.
-     * Update runs once every frame while the object is active.
+     * Update runs once every frame.
      */
 
     private void Awake()
     {
-        // Check whether the CharacterController reference was assigned manually.
+        // Check whether the CharacterController reference
+        // was already assigned manually in the Inspector.
         if (characterController == null)
         {
-            // If it was not assigned, try to find the CharacterController
-            // attached to the same GameObject as this script.
+            // If not, automatically find the CharacterController
+            // attached to the same GameObject.
             characterController = GetComponent<CharacterController>();
         }
     }
@@ -140,11 +164,22 @@ public class PlayerMovement : MonoBehaviour
 
     private void Update()
     {
-        // Handle the player's horizontal movement every frame.
-        HandleMovement();
+        // 1. Check whether the player pressed the jump button.
+        HandleJump();
 
-        // Apply gravity every frame so the player stays on the ground.
+        // 2. Apply gravity and calculate vertical falling/rising velocity.
         HandleGravity();
+
+        // 3. Calculate horizontal movement (WASD + Sprint).
+        Vector3 horizontalMove = CalculateMovement();
+
+        // 4. Combine horizontal and vertical velocity into a single movement vector.
+        // Doing this in ONE Move() call prevents isGrounded from breaking.
+        Vector3 finalMovement = horizontalMove + (Vector3.up * verticalVelocity);
+
+        // 5. Move the CharacterController in 3D space.
+        // Time.deltaTime makes movement frame-rate independent.
+        characterController.Move(finalMovement * Time.deltaTime);
     }
 
     #endregion
@@ -155,11 +190,11 @@ public class PlayerMovement : MonoBehaviour
     /*
      * REGION: Movement Methods
      *
-     * This region contains the methods responsible for reading
-     * keyboard input and moving the player.
+     * This region reads keyboard input and calculates
+     * the player's horizontal velocity across the ground.
      */
 
-    private void HandleMovement()
+    private Vector3 CalculateMovement()
     {
         // Start with no movement input.
         Vector2 movementInput = Vector2.zero;
@@ -167,65 +202,92 @@ public class PlayerMovement : MonoBehaviour
         // Make sure a keyboard is currently available.
         if (Keyboard.current != null)
         {
-            // Check whether the W key is being held.
+            // W moves forward.
             if (Keyboard.current.wKey.isPressed)
             {
-                // W moves the player forward.
                 movementInput.y += 1f;
             }
 
-            // Check whether the S key is being held.
+            // S moves backward.
             if (Keyboard.current.sKey.isPressed)
             {
-                // S moves the player backward.
                 movementInput.y -= 1f;
             }
 
-            // Check whether the D key is being held.
+            // D moves right.
             if (Keyboard.current.dKey.isPressed)
             {
-                // D moves the player to the right.
                 movementInput.x += 1f;
             }
 
-            // Check whether the A key is being held.
+            // A moves left.
             if (Keyboard.current.aKey.isPressed)
             {
-                // A moves the player to the left.
                 movementInput.x -= 1f;
             }
         }
 
-        // Prevent diagonal movement from being faster than straight movement.
+        // Normalize the input so diagonal movement
+        // is not faster than straight movement.
         movementInput = movementInput.normalized;
 
-        // Convert the horizontal input into a 3D movement direction.
+        // Convert the 2D keyboard input into a 3D direction.
+        //
+        // transform.right represents the player's right direction.
+        // transform.forward represents the player's forward direction.
         Vector3 moveDirection =
             transform.right * movementInput.x +
             transform.forward * movementInput.y;
 
-        // Start by assuming the player is walking.
+        // Use walk speed by default.
         float currentSpeed = walkSpeed;
 
-        // Make sure the keyboard exists before checking Left Shift.
-        if (Keyboard.current != null)
+        // Check whether the player is holding Left Shift.
+        if (Keyboard.current != null &&
+            Keyboard.current.leftShiftKey.isPressed)
         {
-            // Check whether the player is holding Left Shift.
-            if (Keyboard.current.leftShiftKey.isPressed)
-            {
-                // If Shift is held, use the faster sprint speed.
-                currentSpeed = sprintSpeed;
-            }
+            // If Shift is held, switch to sprint speed.
+            currentSpeed = sprintSpeed;
         }
 
-        // Move the CharacterController in the calculated direction.
-        //
-        // Time.deltaTime makes movement frame-rate independent.
-        // This means the player should move at the same speed
-        // whether the game is running at 30 FPS or 144 FPS.
-        characterController.Move(
-            moveDirection * currentSpeed * Time.deltaTime
-        );
+        // Return the final horizontal velocity vector.
+        return moveDirection * currentSpeed;
+    }
+
+    #endregion
+
+
+    #region Jump Methods
+
+    /*
+     * REGION: Jump Methods
+     *
+     * This region handles jump input and calculates
+     * the upward velocity needed to reach the desired jump height.
+     */
+
+    private void HandleJump()
+    {
+        // Stop this method if Unity cannot detect a keyboard.
+        if (Keyboard.current == null)
+        {
+            return;
+        }
+
+        // Check whether the Space key was pressed during this frame.
+        if (Keyboard.current.spaceKey.wasPressedThisFrame)
+        {
+            // Only allow the player to jump while grounded.
+            if (characterController.isGrounded)
+            {
+                // Calculate the upward velocity needed
+                // to reach the jump height set in the Inspector.
+                // Formula: v = sqrt(h * -2 * g)
+                verticalVelocity = Mathf.Sqrt(
+                    jumpHeight * -2f * gravity
+                );
+            }
+        }
     }
 
     #endregion
@@ -236,37 +298,31 @@ public class PlayerMovement : MonoBehaviour
     /*
      * REGION: Gravity Methods
      *
-     * This region handles the player's vertical movement caused by gravity.
+     * This region handles vertical movement caused by gravity.
      */
 
     private void HandleGravity()
     {
-        // Check whether the CharacterController currently considers
-        // the player to be touching the ground.
+        // Check whether the player is standing on the ground.
         if (characterController.isGrounded)
         {
             // If the player is grounded and still moving downward,
             // replace the falling velocity with a small downward force.
             if (verticalVelocity < 0f)
             {
-                // This keeps the CharacterController firmly touching the ground.
+                // This helps keep the CharacterController
+                // firmly touching the ground.
                 verticalVelocity = groundedForce;
             }
         }
         else
         {
-            // If the player is not grounded,
-            // increase the downward velocity using gravity.
+            // Gravity should affect the player when in the air.
+            //
+            // This allows the player to rise after jumping
+            // and eventually be pulled back downward.
             verticalVelocity += gravity * Time.deltaTime;
         }
-
-        // Create a Vector3 that contains only vertical movement.
-        Vector3 verticalMovement = Vector3.up * verticalVelocity;
-
-        // Apply the vertical movement to the CharacterController.
-        characterController.Move(
-            verticalMovement * Time.deltaTime
-        );
     }
 
     #endregion

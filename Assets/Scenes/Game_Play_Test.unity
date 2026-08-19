@@ -492,6 +492,7 @@ MonoBehaviour:
   characterController: {fileID: 1443785453}
   walkSpeed: 5
   sprintSpeed: 8
+  jumpHeight: 1.5
   gravity: -20
   groundedForce: -2
 --- !u!1 &2073249401
