@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 773eb6b44cb9b00438183a9d1e40fcf4, type: 3}
+  m_Name: EnemyData_FastMutant
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyData
+  enemyName: Fast Mutant
+  description: A highly aggressive mutant that relies on speed and close-range attacks
+    to overwhelm the player.
+  maxHealth: 90
+  moveSpeed: 4.5
+  chaseSpeed: 7
+  detectionRange: 16
+  fieldOfView: 140
+  loseTargetRange: 22
+  attackDamage: 15
+  attackRange: 1.7
+  attackCooldown: 0.8
