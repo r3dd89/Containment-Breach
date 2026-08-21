@@ -133,6 +133,10 @@ GameObject:
   - component: {fileID: 203894538}
   - component: {fileID: 203894537}
   - component: {fileID: 203894542}
+  - component: {fileID: 203894543}
+  - component: {fileID: 203894545}
+  - component: {fileID: 203894544}
+  - component: {fileID: 203894546}
   m_Layer: 0
   m_Name: TestEnemy_Brute
   m_TagString: Untagged
@@ -243,7 +247,7 @@ Transform:
   m_GameObject: {fileID: 203894536}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -1, y: 1, z: -4}
+  m_LocalPosition: {x: -1, y: 1, z: -3.49}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -264,6 +268,83 @@ MonoBehaviour:
   enemyData: {fileID: 11400000, guid: 84a9385ecea91eb48b0259826f6014b1, type: 2}
   currentTarget: {fileID: 0}
   hasDetectedTarget: 0
+--- !u!114 &203894543
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 203894536}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dab924c276262844482ffc5e6b779589, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyDetection
+  enemyController: {fileID: 0}
+  playerTarget: {fileID: 1443785456}
+  obstacleLayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  eyeHeight: 1.5
+  playerTargetHeight: 1
+  distanceToPlayer: 0
+  playerInsideFieldOfView: 0
+  hasLineOfSight: 0
+--- !u!195 &203894544
+NavMeshAgent:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 203894536}
+  m_Enabled: 1
+  m_AgentTypeID: 0
+  m_Radius: 0.5
+  m_Speed: 3.5
+  m_Acceleration: 8
+  avoidancePriority: 50
+  m_AngularSpeed: 120
+  m_StoppingDistance: 0
+  m_AutoTraverseOffMeshLink: 1
+  m_AutoBraking: 1
+  m_AutoRepath: 1
+  m_Height: 2
+  m_BaseOffset: 1
+  m_WalkableMask: 4294967295
+  m_ObstacleAvoidanceType: 4
+--- !u!114 &203894545
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 203894536}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a4bc4556b261f2c44b00d4aa84407245, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyMovement
+  enemyController: {fileID: 0}
+  navMeshAgent: {fileID: 0}
+  rotationSpeed: 8
+  distanceToTarget: 0
+  isChasing: 0
+--- !u!114 &203894546
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 203894536}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9fca8df40a96f1f4493a88dd30f49124, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyAttack
+  enemyController: {fileID: 0}
+  distanceToTarget: 0
+  targetInAttackRange: 0
+  attackCooldownTimer: 0
 --- !u!1 &254251953
 GameObject:
   m_ObjectHideFlags: 0
@@ -403,6 +484,7 @@ GameObject:
   - component: {fileID: 1389689392}
   - component: {fileID: 1389689391}
   - component: {fileID: 1389689390}
+  - component: {fileID: 1389689394}
   m_Layer: 0
   m_Name: Ground
   m_TagString: Untagged
@@ -504,6 +586,38 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1389689394
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1389689389}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a5ac11cc976e418e8d13136b07e1f52, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshSurface
+  m_SerializedVersion: 0
+  m_AgentTypeID: 0
+  m_CollectObjects: 0
+  m_Size: {x: 10, y: 10, z: 10}
+  m_Center: {x: 0, y: 2, z: 0}
+  m_LayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_UseGeometry: 0
+  m_DefaultArea: 0
+  m_GenerateLinks: 0
+  m_IgnoreNavMeshAgent: 1
+  m_IgnoreNavMeshObstacle: 1
+  m_OverrideTileSize: 0
+  m_TileSize: 256
+  m_OverrideVoxelSize: 0
+  m_VoxelSize: 0.16666667
+  m_MinRegionArea: 2
+  m_NavMeshData: {fileID: 23800000, guid: 652e45b192e1a4844b8c23fbb3d66a5a, type: 2}
+  m_BuildHeightMesh: 0
 --- !u!1 &1443785452
 GameObject:
   m_ObjectHideFlags: 0
