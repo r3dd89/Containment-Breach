@@ -3,7 +3,8 @@ using UnityEngine;
 /*
  * Script Name: PlayerHealth
  * Purpose:
- * Handles the player's runtime health and death state.
+ * Handles the player's runtime health, death state,
+ * and respawn recovery.
  *
  * This script currently handles:
  * - Maximum health
@@ -11,10 +12,10 @@ using UnityEngine;
  * - Receiving damage
  * - Healing
  * - Tracking whether the player is dead
- * - Disabling player movement after death
- * - Disabling camera control after death
+ * - Disabling player controls after death
  * - Showing the death screen after death
- * - Unlocking the mouse cursor after death
+ * - Unlocking the cursor after death
+ * - Restoring the player after checkpoint respawn
  */
 
 public class PlayerHealth : MonoBehaviour
@@ -25,7 +26,7 @@ public class PlayerHealth : MonoBehaviour
      * REGION: Component References
      *
      * This region stores references to player components
-     * that should be disabled when the player dies.
+     * that are disabled during death and restored during respawn.
      */
 
     [Header("Component References")]
@@ -204,12 +205,12 @@ public class PlayerHealth : MonoBehaviour
         }
 
         /*
-         * Subtract incoming damage from current health.
+         * Subtract incoming damage.
          */
         currentHealth -= damageAmount;
 
         /*
-         * Keep health between zero and maximum health.
+         * Keep health inside valid limits.
          */
         currentHealth = Mathf.Clamp(
             currentHealth,
@@ -256,7 +257,7 @@ public class PlayerHealth : MonoBehaviour
         }
 
         /*
-         * Add health.
+         * Add the healing amount.
          */
         currentHealth += healAmount;
 
@@ -279,7 +280,7 @@ public class PlayerHealth : MonoBehaviour
      * REGION: Death Methods
      *
      * This region handles the player's death state,
-     * gameplay control lockout, and death UI.
+     * control lockout, and death interface.
      */
 
     private void Die()
@@ -319,19 +320,82 @@ public class PlayerHealth : MonoBehaviour
         }
 
         /*
-         * Unlock the mouse cursor so the player
-         * can interact with death-screen buttons.
+         * Unlock the cursor so death-screen
+         * buttons can be selected.
          */
         Cursor.lockState = CursorLockMode.None;
 
         /*
-         * Make the mouse cursor visible.
+         * Make the cursor visible.
          */
         Cursor.visible = true;
 
         // TODO: Add death audio.
-        // TODO: Add screen fade or other death effects.
-        // TODO: Add checkpoint restart support.
+        // TODO: Add death screen effects.
+    }
+
+    #endregion
+
+
+    #region Respawn Methods
+
+    /*
+     * REGION: Respawn Methods
+     *
+     * This region restores the player's gameplay state
+     * after the GameManager moves the player
+     * to an active checkpoint.
+     */
+
+    public void Respawn()
+    {
+        /*
+         * Restore the player's health.
+         */
+        currentHealth = maxHealth;
+
+        /*
+         * Mark the player as alive again.
+         */
+        isDead = false;
+
+        /*
+         * Restore movement controls.
+         */
+        if (playerMovement != null)
+        {
+            playerMovement.enabled = true;
+        }
+
+        /*
+         * Restore first-person camera controls.
+         */
+        if (cameraController != null)
+        {
+            cameraController.enabled = true;
+        }
+
+        /*
+         * Hide the death screen.
+         */
+        if (deathPanel != null)
+        {
+            deathPanel.SetActive(false);
+        }
+
+        /*
+         * Restore first-person cursor behavior.
+         */
+        Cursor.lockState = CursorLockMode.Locked;
+
+        /*
+         * Hide the cursor during gameplay.
+         */
+        Cursor.visible = false;
+
+        // TODO: Reset player animation state after respawn.
+        // TODO: Add temporary respawn invulnerability if needed.
+        // TODO: Add respawn visual and audio feedback.
     }
 
     #endregion

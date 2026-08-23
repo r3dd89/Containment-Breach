@@ -12,6 +12,7 @@ using UnityEngine.InputSystem;
  * - Preventing duplicate GameManager objects
  * - Keeping the GameManager alive between scenes
  * - Restarting the current gameplay scene
+ * - Respawning the player at the active checkpoint
  * - Pausing the game
  * - Resuming the game
  * - Showing and hiding the pause menu
@@ -34,6 +35,28 @@ public class GameManager : MonoBehaviour
      */
 
     public static GameManager Instance { get; private set; }
+
+    #endregion
+
+
+    #region Player References
+
+    /*
+     * REGION: Player References
+     *
+     * This region stores references required
+     * for player respawning.
+     */
+
+    [Header("Player References")]
+
+    [SerializeField]
+    [Tooltip("The Player object that can be moved to an active checkpoint.")]
+    private Transform playerTransform;
+
+    [SerializeField]
+    [Tooltip("The PlayerHealth component used to restore the player after respawning.")]
+    private PlayerHealth playerHealth;
 
     #endregion
 
@@ -102,15 +125,16 @@ public class GameManager : MonoBehaviour
     private void Awake()
     {
         /*
-         * If no GameManager instance currently exists,
-         * assign this object as the active instance.
+         * Assign this object as the active GameManager
+         * if no instance currently exists.
          */
         if (Instance == null)
         {
             Instance = this;
 
             /*
-             * Keep this GameObject alive when scenes change.
+             * Keep the GameManager alive
+             * when scenes change.
              */
             DontDestroyOnLoad(gameObject);
         }
@@ -125,7 +149,7 @@ public class GameManager : MonoBehaviour
         }
 
         /*
-         * Make sure the game begins in an unpaused state.
+         * Make sure gameplay begins at normal speed.
          */
         Time.timeScale = 1f;
 
@@ -138,10 +162,29 @@ public class GameManager : MonoBehaviour
         }
 
         /*
-         * Make sure the runtime state matches
-         * the game's initial unpaused state.
+         * Make sure the runtime pause state
+         * matches the initial gameplay state.
          */
         isPaused = false;
+
+        /*
+         * Automatically find the PlayerHealth component
+         * if it was not assigned manually.
+         */
+        if (playerHealth == null)
+        {
+            playerHealth = FindFirstObjectByType<PlayerHealth>();
+        }
+
+        /*
+         * Use the PlayerHealth GameObject as the player Transform
+         * if a separate player reference was not assigned.
+         */
+        if (playerTransform == null &&
+            playerHealth != null)
+        {
+            playerTransform = playerHealth.transform;
+        }
     }
 
 
@@ -177,18 +220,12 @@ public class GameManager : MonoBehaviour
 
     public void TogglePause()
     {
-        /*
-         * Resume if the game is already paused.
-         */
         if (isPaused)
         {
             ResumeGame();
         }
         else
         {
-            /*
-             * Pause if the game is currently running.
-             */
             PauseGame();
         }
     }
@@ -202,10 +239,7 @@ public class GameManager : MonoBehaviour
         isPaused = true;
 
         /*
-         * Stop gameplay time.
-         *
-         * Most movement, AI, cooldowns, and other systems
-         * using Time.deltaTime will stop updating.
+         * Stop time-based gameplay systems.
          */
         Time.timeScale = 0f;
 
@@ -218,14 +252,10 @@ public class GameManager : MonoBehaviour
         }
 
         /*
-         * Unlock the mouse cursor so pause-menu
-         * buttons can be selected.
+         * Unlock and show the cursor
+         * for pause-menu interaction.
          */
         Cursor.lockState = CursorLockMode.None;
-
-        /*
-         * Make the cursor visible.
-         */
         Cursor.visible = true;
     }
 
@@ -238,7 +268,7 @@ public class GameManager : MonoBehaviour
         isPaused = false;
 
         /*
-         * Restore normal gameplay time.
+         * Restore normal gameplay speed.
          */
         Time.timeScale = 1f;
 
@@ -251,14 +281,102 @@ public class GameManager : MonoBehaviour
         }
 
         /*
-         * Lock the mouse cursor back to the center
-         * for first-person camera control.
+         * Restore first-person cursor behavior.
          */
         Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
+
+    #endregion
+
+
+    #region Respawn Methods
+
+    /*
+     * REGION: Respawn Methods
+     *
+     * This region handles returning the player
+     * to the currently active checkpoint.
+     */
+
+    public void RespawnPlayer()
+    {
+        /*
+         * Make sure normal gameplay time is active.
+         */
+        Time.timeScale = 1f;
 
         /*
-         * Hide the cursor during gameplay.
+         * Check whether a valid checkpoint exists.
+         *
+         * If no checkpoint exists, restart the scene
+         * as the fallback behavior.
          */
+        if (CheckpointManager.Instance == null ||
+            !CheckpointManager.Instance.HasActiveCheckpoint)
+        {
+            RestartCurrentScene();
+
+            return;
+        }
+
+        /*
+         * Make sure the required player references exist.
+         */
+        if (playerTransform == null ||
+            playerHealth == null)
+        {
+            RestartCurrentScene();
+
+            return;
+        }
+
+        /*
+         * Temporarily disable the CharacterController.
+         *
+         * Directly changing the Transform while a
+         * CharacterController is enabled can cause
+         * unwanted collision behavior.
+         */
+        CharacterController characterController =
+            playerTransform.GetComponent<CharacterController>();
+
+        if (characterController != null)
+        {
+            characterController.enabled = false;
+        }
+
+        /*
+         * Move the player to the active checkpoint.
+         */
+        playerTransform.position =
+            CheckpointManager.Instance.ActiveRespawnPosition;
+
+        /*
+         * Restore the checkpoint's facing direction.
+         */
+        playerTransform.rotation =
+            CheckpointManager.Instance.ActiveRespawnRotation;
+
+        /*
+         * Re-enable the CharacterController
+         * after repositioning the player.
+         */
+        if (characterController != null)
+        {
+            characterController.enabled = true;
+        }
+
+        /*
+         * Restore player health, controls,
+         * camera input, and death UI state.
+         */
+        playerHealth.Respawn();
+
+        /*
+         * Restore first-person cursor behavior.
+         */
+        Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
 
@@ -277,21 +395,17 @@ public class GameManager : MonoBehaviour
     {
         /*
          * Restore normal time before reloading.
-         *
-         * This prevents the restarted scene from
-         * remaining frozen if restart is triggered
-         * while the game is paused.
          */
         Time.timeScale = 1f;
 
         /*
-         * Get the scene that is currently active.
+         * Get the currently active scene.
          */
         Scene currentScene =
             SceneManager.GetActiveScene();
 
         /*
-         * Reload the active scene using its build index.
+         * Reload the currently active scene.
          */
         SceneManager.LoadScene(
             currentScene.buildIndex
@@ -301,7 +415,7 @@ public class GameManager : MonoBehaviour
     #endregion
 
 
-    // TODO: Add checkpoint support.
+    // TODO: Add checkpoint persistence to saved games.
     // TODO: Add scene transition methods.
     // TODO: Add save and load coordination.
     // TODO: Add win and lose state handling.
