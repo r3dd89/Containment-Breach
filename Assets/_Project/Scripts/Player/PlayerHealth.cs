@@ -10,20 +10,11 @@ using UnityEngine;
  * - Current health
  * - Receiving damage
  * - Healing
- * - Preventing health from going below zero
- * - Preventing health from exceeding maximum health
  * - Tracking whether the player is dead
  * - Disabling player movement after death
  * - Disabling camera control after death
  * - Showing the death screen after death
- *
- * Later, this script can be expanded to support:
- * - Armor
- * - Health UI
- * - Respawning
- * - Checkpoints
- * - Damage effects
- * - Healing items
+ * - Unlocking the mouse cursor after death
  */
 
 public class PlayerHealth : MonoBehaviour
@@ -176,9 +167,6 @@ public class PlayerHealth : MonoBehaviour
 
         /*
          * Make sure the death panel begins hidden.
-         *
-         * This protects against the panel accidentally
-         * being left active in the Unity Editor.
          */
         if (deathPanel != null)
         {
@@ -200,7 +188,7 @@ public class PlayerHealth : MonoBehaviour
     public void TakeDamage(float damageAmount)
     {
         /*
-         * Do nothing if the player is already dead.
+         * Ignore damage if the player is already dead.
          */
         if (isDead)
         {
@@ -216,14 +204,12 @@ public class PlayerHealth : MonoBehaviour
         }
 
         /*
-         * Subtract the incoming damage
-         * from the player's current health.
+         * Subtract incoming damage from current health.
          */
         currentHealth -= damageAmount;
 
         /*
-         * Keep current health between
-         * zero and maximum health.
+         * Keep health between zero and maximum health.
          */
         currentHealth = Mathf.Clamp(
             currentHealth,
@@ -232,8 +218,7 @@ public class PlayerHealth : MonoBehaviour
         );
 
         /*
-         * Check whether the damage
-         * reduced health to zero.
+         * Trigger death when health reaches zero.
          */
         if (currentHealth <= 0f)
         {
@@ -271,14 +256,12 @@ public class PlayerHealth : MonoBehaviour
         }
 
         /*
-         * Add the healing amount
-         * to the player's current health.
+         * Add health.
          */
         currentHealth += healAmount;
 
         /*
-         * Prevent healing from raising health
-         * above the configured maximum.
+         * Prevent health from exceeding maximum health.
          */
         currentHealth = Mathf.Clamp(
             currentHealth,
@@ -295,8 +278,8 @@ public class PlayerHealth : MonoBehaviour
     /*
      * REGION: Death Methods
      *
-     * This region handles the player's death state
-     * and disables gameplay controls.
+     * This region handles the player's death state,
+     * gameplay control lockout, and death UI.
      */
 
     private void Die()
@@ -307,13 +290,12 @@ public class PlayerHealth : MonoBehaviour
         isDead = true;
 
         /*
-         * Keep health exactly at zero
-         * after death.
+         * Keep health exactly at zero.
          */
         currentHealth = 0f;
 
         /*
-         * Disable player movement.
+         * Disable movement controls.
          */
         if (playerMovement != null)
         {
@@ -321,7 +303,7 @@ public class PlayerHealth : MonoBehaviour
         }
 
         /*
-         * Disable first-person camera control.
+         * Disable first-person camera controls.
          */
         if (cameraController != null)
         {
@@ -329,7 +311,7 @@ public class PlayerHealth : MonoBehaviour
         }
 
         /*
-         * Show the death panel.
+         * Show the death screen.
          */
         if (deathPanel != null)
         {
@@ -337,16 +319,19 @@ public class PlayerHealth : MonoBehaviour
         }
 
         /*
-         * Additional death behavior can be added later.
-         *
-         * Examples:
-         * - Unlock the mouse cursor
-         * - Add restart button
-         * - Add main menu button
-         * - Play death audio
-         * - Fade the screen
-         * - Restart from checkpoint
+         * Unlock the mouse cursor so the player
+         * can interact with death-screen buttons.
          */
+        Cursor.lockState = CursorLockMode.None;
+
+        /*
+         * Make the mouse cursor visible.
+         */
+        Cursor.visible = true;
+
+        // TODO: Add death audio.
+        // TODO: Add screen fade or other death effects.
+        // TODO: Add checkpoint restart support.
     }
 
     #endregion
