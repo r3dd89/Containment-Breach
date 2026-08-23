@@ -15,11 +15,11 @@ using UnityEngine;
  * - Tracking whether the player is dead
  * - Disabling player movement after death
  * - Disabling camera control after death
+ * - Showing the death screen after death
  *
  * Later, this script can be expanded to support:
  * - Armor
  * - Health UI
- * - Death screen
  * - Respawning
  * - Checkpoints
  * - Damage effects
@@ -46,6 +46,24 @@ public class PlayerHealth : MonoBehaviour
     [SerializeField]
     [Tooltip("The CameraController component that controls first-person mouse look.")]
     private CameraController cameraController;
+
+    #endregion
+
+
+    #region User Interface References
+
+    /*
+     * REGION: User Interface References
+     *
+     * This region stores references to user interface
+     * objects related to player health and death.
+     */
+
+    [Header("User Interface References")]
+
+    [SerializeField]
+    [Tooltip("The panel that becomes visible when the player dies.")]
+    private GameObject deathPanel;
 
     #endregion
 
@@ -140,9 +158,6 @@ public class PlayerHealth : MonoBehaviour
         /*
          * Automatically find CameraController
          * from the Player object's children.
-         *
-         * The Main Camera is currently a child
-         * of the Player object.
          */
         if (cameraController == null)
         {
@@ -158,6 +173,17 @@ public class PlayerHealth : MonoBehaviour
          * Make sure the player begins alive.
          */
         isDead = false;
+
+        /*
+         * Make sure the death panel begins hidden.
+         *
+         * This protects against the panel accidentally
+         * being left active in the Unity Editor.
+         */
+        if (deathPanel != null)
+        {
+            deathPanel.SetActive(false);
+        }
     }
 
     #endregion
@@ -175,9 +201,6 @@ public class PlayerHealth : MonoBehaviour
     {
         /*
          * Do nothing if the player is already dead.
-         *
-         * This prevents repeated damage from
-         * triggering death behavior multiple times.
          */
         if (isDead)
         {
@@ -186,9 +209,6 @@ public class PlayerHealth : MonoBehaviour
 
         /*
          * Ignore zero or negative damage values.
-         *
-         * Damage should never accidentally
-         * increase the player's health.
          */
         if (damageAmount <= 0f)
         {
@@ -236,9 +256,6 @@ public class PlayerHealth : MonoBehaviour
     {
         /*
          * Dead players cannot currently be healed.
-         *
-         * Respawning or revival can be handled
-         * by a separate system later.
          */
         if (isDead)
         {
@@ -296,13 +313,7 @@ public class PlayerHealth : MonoBehaviour
         currentHealth = 0f;
 
         /*
-         * Disable PlayerMovement.
-         *
-         * This prevents:
-         * - Walking
-         * - Sprinting
-         * - Jumping
-         * - Crouching
+         * Disable player movement.
          */
         if (playerMovement != null)
         {
@@ -310,10 +321,7 @@ public class PlayerHealth : MonoBehaviour
         }
 
         /*
-         * Disable CameraController.
-         *
-         * This prevents mouse-look input
-         * after the player dies.
+         * Disable first-person camera control.
          */
         if (cameraController != null)
         {
@@ -321,15 +329,23 @@ public class PlayerHealth : MonoBehaviour
         }
 
         /*
+         * Show the death panel.
+         */
+        if (deathPanel != null)
+        {
+            deathPanel.SetActive(true);
+        }
+
+        /*
          * Additional death behavior can be added later.
          *
          * Examples:
          * - Unlock the mouse cursor
-         * - Show a death screen
+         * - Add restart button
+         * - Add main menu button
          * - Play death audio
          * - Fade the screen
          * - Restart from checkpoint
-         * - Reload the current scene
          */
     }
 
