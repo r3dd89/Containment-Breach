@@ -12,10 +12,14 @@ using UnityEngine;
  * - Checking whether a target exists
  * - Checking whether the target is inside attack range
  * - Enforcing attack cooldown timing
- * - Preparing a clean attack method for future damage logic
+ * - Applying damage to PlayerHealth
  *
- * Actual player damage will be connected after
- * the player health system is created.
+ * Later, this script can be expanded to support:
+ * - Attack animations
+ * - Attack sound effects
+ * - Hit timing
+ * - Screen effects
+ * - Enemy-specific attack behavior
  */
 
 public class EnemyAttack : MonoBehaviour
@@ -107,9 +111,6 @@ public class EnemyAttack : MonoBehaviour
 
         /*
          * Report an error if EnemyController is missing.
-         *
-         * UnityEngine.Debug is written explicitly
-         * to avoid conflicts with other Debug classes.
          *
          * This diagnostic should be reviewed
          * before the final production build.
@@ -208,7 +209,7 @@ public class EnemyAttack : MonoBehaviour
      * REGION: Attack Methods
      *
      * This region controls attack timing
-     * and the actual attack event.
+     * and applies damage to the current target.
      */
 
     private void TryAttack()
@@ -239,20 +240,58 @@ public class EnemyAttack : MonoBehaviour
     private void PerformAttack()
     {
         /*
-         * Actual player damage is intentionally
-         * not implemented yet.
+         * Stop if the current target reference
+         * is no longer valid.
+         */
+        if (enemyController.CurrentTarget == null)
+        {
+            return;
+        }
+
+        /*
+         * Try to find PlayerHealth on the target object.
          *
-         * A PlayerHealth system will be created later.
-         * This method can then apply damage using:
+         * The Player object currently contains
+         * the PlayerHealth component.
+         */
+        PlayerHealth playerHealth =
+            enemyController.CurrentTarget.GetComponent<PlayerHealth>();
+
+        /*
+         * Stop if the target does not contain PlayerHealth.
          *
-         * enemyController.AttackDamage
+         * This prevents attack logic from failing
+         * if another type of target is used later.
+         */
+        if (playerHealth == null)
+        {
+            return;
+        }
+
+        /*
+         * Do not apply additional damage
+         * after the player has died.
+         */
+        if (playerHealth.IsDead)
+        {
+            return;
+        }
+
+        /*
+         * Apply the attack damage configured
+         * in the enemy's EnemyData asset.
          *
-         * This method is also the correct location for:
-         * - Attack animations
-         * - Attack sound effects
-         * - Hit timing
-         * - Screen effects
-         * - Enemy-specific attack behavior
+         * Example:
+         * EnemyData_Brute currently uses 35 damage.
+         */
+        playerHealth.TakeDamage(
+            enemyController.AttackDamage
+        );
+
+        /*
+         * Attack animations, sound effects,
+         * hit timing, and other feedback
+         * can be connected here later.
          */
     }
 
