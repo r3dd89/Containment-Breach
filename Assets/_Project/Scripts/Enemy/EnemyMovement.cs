@@ -4,133 +4,97 @@ using UnityEngine.AI;
 /*
  * Script Name: EnemyMovement
  * Purpose:
- * Handles enemy navigation and movement based on
- * the current AI state.
+ * Controls NavMesh-based enemy movement for the different AI states.
  *
- * This script uses:
- * - EnemyController for target information and EnemyData values
- * - EnemyDetection for the player's last known position
- * - EnemyStateMachine for the current AI state
- * - NavMeshAgent for pathfinding
+ * Current supported movement:
+ * - Patrol: Moves between assigned patrol points in order.
+ * - Chase: Moves directly toward the detected player.
+ * - Attack: Stops movement and faces the player.
+ * - Search: Moves to the player's last known position.
  *
- * This script currently handles:
- * - Standing still during states without movement behavior
- * - Chasing a detected player
- * - Using chase speed from EnemyData
- * - Stopping when the player enters attack range
- * - Moving toward the player's last known position during Search
- * - Stopping after reaching the last known position
- * - Rotating toward movement direction
- * - Rotating toward the player while inside attack range
+ * Future movement:
+ * - Investigate noise sources.
+ * - Return to patrol route intelligently.
+ * - Randomized searching around the last known player position.
  */
 
 public class EnemyMovement : MonoBehaviour
 {
     #region Component References
 
-    /*
-     * REGION: Component References
-     *
-     * This region stores references to the enemy systems
-     * required for navigation and state-aware movement.
-     */
-
     [Header("Component References")]
 
-    [SerializeField]
-    [Tooltip("The EnemyController that provides target information and EnemyData values.")]
-    private EnemyController enemyController;
+    [Tooltip("Provides access to enemy statistics and the current player target.")]
+    [SerializeField] private EnemyController enemyController;
 
-    [SerializeField]
-    [Tooltip("The EnemyDetection component that stores the player's last known position.")]
-    private EnemyDetection enemyDetection;
+    [Tooltip("Provides detection information including the player's last known position.")]
+    [SerializeField] private EnemyDetection enemyDetection;
 
-    [SerializeField]
-    [Tooltip("The EnemyStateMachine that provides the enemy's current AI state.")]
-    private EnemyStateMachine enemyStateMachine;
+    [Tooltip("Provides access to the enemy's current AI state.")]
+    [SerializeField] private EnemyStateMachine enemyStateMachine;
 
-    [SerializeField]
-    [Tooltip("The NavMeshAgent used to move the enemy across the NavMesh.")]
-    private NavMeshAgent navMeshAgent;
+    [Tooltip("NavMesh Agent used to move the enemy through the environment.")]
+    [SerializeField] private NavMeshAgent navMeshAgent;
+
+    [Tooltip("Contains the scene-specific patrol points assigned to this enemy.")]
+    [SerializeField] private EnemyPatrolRoute enemyPatrolRoute;
 
     #endregion
 
 
-    #region Movement Settings
+    #region Patrol Settings
 
-    /*
-     * REGION: Movement Settings
-     *
-     * This region contains additional navigation values
-     * used by state-specific movement.
-     */
+    [Header("Patrol Settings")]
 
-    [Header("Movement Settings")]
+    [Tooltip("Distance from a patrol point that counts as reaching the destination.")]
+    [SerializeField] private float patrolArrivalDistance = 0.75f;
 
-    [SerializeField]
-    [Min(0f)]
-    [Tooltip("How close the enemy must get to a search destination before considering it reached.")]
-    private float searchArrivalDistance = 0.75f;
+    #endregion
+
+
+    #region Search Settings
+
+    [Header("Search Settings")]
+
+    [Tooltip("Distance from the last known player position that counts as arriving at the search destination.")]
+    [SerializeField] private float searchArrivalDistance = 0.75f;
 
     #endregion
 
 
     #region Rotation Settings
 
-    /*
-     * REGION: Rotation Settings
-     *
-     * These values control how quickly the enemy
-     * rotates toward movement directions and targets.
-     */
-
     [Header("Rotation Settings")]
 
-    [SerializeField]
-    [Tooltip("How quickly the enemy rotates toward its movement direction or current target.")]
-    private float rotationSpeed = 8f;
+    [Tooltip("Controls how quickly the enemy turns toward its movement direction or target.")]
+    [SerializeField] private float rotationSpeed = 8f;
 
     #endregion
 
 
-    #region Runtime State
+    #region Runtime Debug Information
 
-    /*
-     * REGION: Runtime State
-     *
-     * These values expose current movement information
-     * in the Inspector during gameplay.
-     */
+    [Header("Runtime Debug Information")]
 
-    [Header("Runtime State")]
+    [Tooltip("Current distance between the enemy and its active player target.")]
+    [SerializeField] private float distanceToTarget;
 
-    [SerializeField]
-    [Tooltip("Shows the current distance between the enemy and its detected target.")]
-    private float distanceToTarget;
+    [Tooltip("True while the enemy is actively chasing the player.")]
+    [SerializeField] private bool isChasing;
 
-    [SerializeField]
-    [Tooltip("Shows whether the enemy is currently chasing its target.")]
-    private bool isChasing;
+    [Tooltip("True while the enemy has reached its search destination.")]
+    [SerializeField] private bool isSearching;
 
-    [SerializeField]
-    [Tooltip("Shows whether the enemy is currently moving toward a search location.")]
-    private bool isSearching;
+    [Tooltip("Current destination used during the Search state.")]
+    [SerializeField] private Vector3 searchDestination;
 
-    [SerializeField]
-    [Tooltip("Shows the current destination used by Search behavior.")]
-    private Vector3 searchDestination;
+    [Tooltip("Current patrol destination used during the Patrol state.")]
+    [SerializeField] private Vector3 patrolDestination;
 
     #endregion
 
 
     #region Public Properties
-
-    /*
-     * REGION: Public Properties
-     *
-     * These properties allow other systems
-     * to safely read movement state.
-     */
 
     public bool IsChasing
     {
@@ -147,83 +111,63 @@ public class EnemyMovement : MonoBehaviour
         get { return searchDestination; }
     }
 
+    public Vector3 PatrolDestination
+    {
+        get { return patrolDestination; }
+    }
+
     #endregion
 
 
     #region Unity Methods
 
-    /*
-     * REGION: Unity Methods
-     *
-     * Unity automatically calls these methods.
-     */
-
     private void Awake()
     {
-        /*
-         * Automatically find EnemyController
-         * if it was not assigned manually.
-         */
+        // Finds the EnemyController automatically if the Inspector reference was not assigned.
         if (enemyController == null)
         {
             enemyController = GetComponent<EnemyController>();
         }
 
-        /*
-         * Automatically find EnemyDetection
-         * if it was not assigned manually.
-         */
+        // Finds the EnemyDetection component automatically if needed.
         if (enemyDetection == null)
         {
             enemyDetection = GetComponent<EnemyDetection>();
         }
 
-        /*
-         * Automatically find EnemyStateMachine
-         * if it was not assigned manually.
-         */
+        // Finds the EnemyStateMachine component automatically if needed.
         if (enemyStateMachine == null)
         {
             enemyStateMachine = GetComponent<EnemyStateMachine>();
         }
 
-        /*
-         * Automatically find NavMeshAgent
-         * if it was not assigned manually.
-         */
+        // Finds the NavMeshAgent component automatically if needed.
         if (navMeshAgent == null)
         {
             navMeshAgent = GetComponent<NavMeshAgent>();
+        }
+
+        // Finds the patrol route attached to this enemy if the Inspector reference was not assigned.
+        if (enemyPatrolRoute == null)
+        {
+            enemyPatrolRoute = GetComponent<EnemyPatrolRoute>();
         }
     }
 
 
     private void Start()
     {
-        /*
-         * Stop setup if the NavMeshAgent is missing.
-         */
-        if (navMeshAgent == null)
+        // Rotation is handled manually so movement direction can be controlled consistently.
+        if (navMeshAgent != null)
         {
-            return;
+            navMeshAgent.updateRotation = false;
         }
-
-        /*
-         * Disable NavMeshAgent automatic rotation.
-         *
-         * Rotation is controlled manually so different
-         * AI states can control facing behavior consistently.
-         */
-        navMeshAgent.updateRotation = false;
     }
 
 
     private void Update()
     {
-        /*
-         * Stop movement logic if required
-         * components are missing.
-         */
+        // Movement cannot continue without the required core components.
         if (enemyController == null ||
             enemyStateMachine == null ||
             navMeshAgent == null)
@@ -231,21 +175,23 @@ public class EnemyMovement : MonoBehaviour
             return;
         }
 
-        /*
-         * Stop navigation logic if the agent
-         * is not currently placed on a NavMesh.
-         */
+        // NavMeshAgent movement cannot be used until the enemy is standing on a baked NavMesh.
         if (!navMeshAgent.isOnNavMesh)
         {
             return;
         }
 
-        /*
-         * Run movement behavior based on
-         * the enemy's current AI state.
-         */
+        // Runs movement behavior based on the enemy's current AI state.
         switch (enemyStateMachine.CurrentState)
         {
+            case EnemyState.Patrol:
+                HandlePatrol();
+                break;
+
+            case EnemyState.Investigate:
+                HandleInvestigate();
+                break;
+
             case EnemyState.Chase:
                 HandleChase();
                 break;
@@ -258,16 +204,8 @@ public class EnemyMovement : MonoBehaviour
                 HandleSearch();
                 break;
 
-            case EnemyState.Patrol:
-                StopMovement();
-                break;
-
-            case EnemyState.Investigate:
-                StopMovement();
-                break;
-
             case EnemyState.Return:
-                StopMovement();
+                HandleReturn();
                 break;
         }
     }
@@ -275,367 +213,305 @@ public class EnemyMovement : MonoBehaviour
     #endregion
 
 
-    #region Chase Methods
+    #region Patrol Movement
 
-    /*
-     * REGION: Chase Methods
-     *
-     * This region handles navigation toward
-     * a currently detected target.
-     */
+    private void HandlePatrol()
+    {
+        // Patrol cannot function without a valid patrol route.
+        if (enemyPatrolRoute == null)
+        {
+            StopMovement();
+            return;
+        }
+
+        // Patrol cannot function if no patrol points were assigned.
+        if (!enemyPatrolRoute.HasPatrolPoints)
+        {
+            StopMovement();
+            return;
+        }
+
+        // Gets the currently selected patrol point.
+        Transform currentPatrolPoint = enemyPatrolRoute.CurrentPatrolPoint;
+
+        // Protects against an empty or missing patrol point reference.
+        if (currentPatrolPoint == null)
+        {
+            StopMovement();
+            return;
+        }
+
+        // Stores the current patrol destination for Inspector debugging.
+        patrolDestination = currentPatrolPoint.position;
+
+        // Uses the normal movement speed while patrolling.
+        navMeshAgent.speed = enemyController.MoveSpeed;
+
+        // Allows the NavMesh Agent to move.
+        navMeshAgent.isStopped = false;
+
+        // Sends the enemy toward the active patrol point.
+        navMeshAgent.SetDestination(patrolDestination);
+
+        // Rotates the enemy toward its actual NavMesh movement direction.
+        RotateTowardMovementDirection();
+
+        // Calculates horizontal distance to the current patrol point.
+        Vector3 flatEnemyPosition = transform.position;
+        flatEnemyPosition.y = 0f;
+
+        Vector3 flatPatrolPosition = patrolDestination;
+        flatPatrolPosition.y = 0f;
+
+        float distanceToPatrolPoint =
+            Vector3.Distance(flatEnemyPosition, flatPatrolPosition);
+
+        // Moves to the next patrol point after reaching the current point.
+        if (distanceToPatrolPoint <= patrolArrivalDistance)
+        {
+            enemyPatrolRoute.AdvanceToNextPatrolPoint();
+        }
+
+        isChasing = false;
+        isSearching = false;
+    }
+
+    #endregion
+
+
+    #region Chase Movement
 
     private void HandleChase()
     {
-        /*
-         * Stop chasing if the current target
-         * is no longer available.
-         */
-        if (!enemyController.HasDetectedTarget ||
-            enemyController.CurrentTarget == null)
+        Transform target = enemyController.CurrentTarget;
+
+        // Stops movement if the target no longer exists.
+        if (target == null)
         {
             StopMovement();
+            return;
+        }
+
+        // Calculates the current distance to the player.
+        distanceToTarget =
+            Vector3.Distance(transform.position, target.position);
+
+        // Stops advancing once the player is inside attack range.
+        if (distanceToTarget <= enemyController.AttackRange)
+        {
+            navMeshAgent.isStopped = true;
+
+            FaceTarget(target.position);
+
+            isChasing = false;
 
             return;
         }
 
-        /*
-         * Store the current target reference.
-         */
-        Transform target =
-            enemyController.CurrentTarget;
+        // Chase movement uses the faster chase speed from EnemyData.
+        navMeshAgent.speed = enemyController.ChaseSpeed;
 
-        /*
-         * Calculate the current distance
-         * between the enemy and target.
-         */
-        distanceToTarget = Vector3.Distance(
-            transform.position,
-            target.position
-        );
+        // Allows NavMesh movement.
+        navMeshAgent.isStopped = false;
 
-        /*
-         * Stop moving once the target
-         * enters attack range.
-         */
-        if (distanceToTarget <=
-            enemyController.AttackRange)
-        {
-            StopMovement();
+        // Continuously updates the destination to follow the moving player.
+        navMeshAgent.SetDestination(target.position);
 
-            RotateTowardTarget(
-                target.position
-            );
+        // Turns the enemy toward its movement direction.
+        RotateTowardMovementDirection();
 
-            return;
-        }
-
-        /*
-         * Mark the enemy as actively chasing.
-         */
         isChasing = true;
         isSearching = false;
-
-        /*
-         * Use the chase speed configured
-         * in the assigned EnemyData asset.
-         */
-        navMeshAgent.speed =
-            enemyController.ChaseSpeed;
-
-        /*
-         * Update the NavMesh destination
-         * to the target's current position.
-         */
-        navMeshAgent.SetDestination(
-            target.position
-        );
-
-        /*
-         * Face the direction of travel.
-         */
-        RotateTowardMovementDirection();
     }
 
     #endregion
 
 
-    #region Attack Position Methods
-
-    /*
-     * REGION: Attack Position Methods
-     *
-     * This region handles movement behavior
-     * while the enemy is in the Attack state.
-     */
+    #region Attack Movement
 
     private void HandleAttackPosition()
     {
-        /*
-         * Stop navigation while attacking.
-         */
+        Transform target = enemyController.CurrentTarget;
+
+        // Stops movement while the attack system handles combat.
         StopMovement();
 
-        /*
-         * Face the current target if one exists.
-         */
-        if (enemyController.CurrentTarget != null)
+        // Continues facing the player while attacking.
+        if (target != null)
         {
-            RotateTowardTarget(
-                enemyController.CurrentTarget.position
-            );
+            FaceTarget(target.position);
         }
     }
 
     #endregion
 
 
-    #region Search Methods
-
-    /*
-     * REGION: Search Methods
-     *
-     * This region handles movement toward
-     * the player's last confirmed position.
-     */
+    #region Search Movement
 
     private void HandleSearch()
     {
-        /*
-         * Search movement requires a valid
-         * last known player position.
-         */
-        if (enemyDetection == null ||
-            !enemyDetection.HasLastKnownPosition)
+        // Search behavior requires detection memory.
+        if (enemyDetection == null)
         {
             StopMovement();
-
             return;
         }
 
-        /*
-         * Store the player's last confirmed position
-         * as the current search destination.
-         */
-        searchDestination =
-            enemyDetection.LastKnownPlayerPosition;
+        // Stops if there is no remembered player location.
+        if (!enemyDetection.HasLastKnownPosition)
+        {
+            StopMovement();
+            return;
+        }
 
-        /*
-         * Calculate the horizontal distance
-         * to the search destination.
-         *
-         * Vertical differences are ignored because
-         * NavMesh navigation handles surface height.
-         */
-        Vector3 enemyPosition =
-            transform.position;
+        // Copies the player's last visible position.
+        searchDestination = enemyDetection.LastKnownPlayerPosition;
 
-        Vector3 flatSearchDestination =
-            searchDestination;
+        // Search movement uses the enemy's normal movement speed.
+        navMeshAgent.speed = enemyController.MoveSpeed;
 
-        enemyPosition.y = 0f;
-        flatSearchDestination.y = 0f;
+        // Calculates horizontal distance to the search location.
+        Vector3 flatEnemyPosition = transform.position;
+        flatEnemyPosition.y = 0f;
+
+        Vector3 flatSearchPosition = searchDestination;
+        flatSearchPosition.y = 0f;
 
         float distanceToSearchDestination =
-            Vector3.Distance(
-                enemyPosition,
-                flatSearchDestination
-            );
+            Vector3.Distance(flatEnemyPosition, flatSearchPosition);
 
-        /*
-         * Stop after reaching the last
-         * known player position.
-         *
-         * The state machine's Search timer continues,
-         * allowing the enemy to remain alert before
-         * transitioning to Return.
-         */
-        if (distanceToSearchDestination <=
-            searchArrivalDistance)
+        // Stops after reaching the remembered location.
+        if (distanceToSearchDestination <= searchArrivalDistance)
         {
-            StopMovement();
+            navMeshAgent.isStopped = true;
+
+            if (navMeshAgent.hasPath)
+            {
+                navMeshAgent.ResetPath();
+            }
 
             isSearching = true;
+            isChasing = false;
 
             return;
         }
 
-        /*
-         * Mark the enemy as actively searching.
-         */
-        isChasing = false;
-        isSearching = true;
+        // Continues moving toward the remembered player position.
+        navMeshAgent.isStopped = false;
 
-        /*
-         * Use normal movement speed while searching.
-         *
-         * Search movement is intentionally slower
-         * than active pursuit.
-         */
-        navMeshAgent.speed =
-            enemyController.MoveSpeed;
+        navMeshAgent.SetDestination(searchDestination);
 
-        /*
-         * Navigate toward the last confirmed
-         * player position.
-         */
-        navMeshAgent.SetDestination(
-            searchDestination
-        );
-
-        /*
-         * Face the current movement direction.
-         */
         RotateTowardMovementDirection();
+
+        isSearching = false;
+        isChasing = false;
     }
 
     #endregion
 
 
-    #region Movement Control Methods
+    #region Investigate Movement
 
-    /*
-     * REGION: Movement Control Methods
-     *
-     * This region handles stopping navigation
-     * and clearing current movement state.
-     */
+    private void HandleInvestigate()
+    {
+        /*
+         * TODO:
+         * Move toward a detected sound or environmental disturbance.
+         * Investigation destinations will be supplied by the future hearing system.
+         */
+
+        StopMovement();
+    }
+
+    #endregion
+
+
+    #region Return Movement
+
+    private void HandleReturn()
+    {
+        /*
+         * TODO:
+         * Replace the temporary stopped state with navigation back to the
+         * patrol route after searching is complete.
+         */
+
+        StopMovement();
+    }
+
+    #endregion
+
+
+    #region Movement Utility Methods
 
     private void StopMovement()
     {
-        /*
-         * Stop movement-state indicators.
-         */
+        if (navMeshAgent == null)
+        {
+            return;
+        }
+
+        navMeshAgent.isStopped = true;
+
+        // Removes the previous NavMesh path so old destinations are not retained.
+        if (navMeshAgent.hasPath)
+        {
+            navMeshAgent.ResetPath();
+        }
+
         isChasing = false;
         isSearching = false;
 
-        /*
-         * Stop here if the NavMeshAgent
-         * is not currently on a NavMesh.
-         */
-        if (navMeshAgent == null ||
-            !navMeshAgent.isOnNavMesh)
-        {
-            return;
-        }
-
-        /*
-         * Clear the active NavMesh path.
-         */
-        navMeshAgent.ResetPath();
+        distanceToTarget = 0f;
     }
 
-    #endregion
-
-
-    #region Rotation Methods
-
-    /*
-     * REGION: Rotation Methods
-     *
-     * This region controls how the enemy rotates
-     * while navigating or facing a target.
-     */
 
     private void RotateTowardMovementDirection()
     {
-        /*
-         * Stop if the agent is barely moving.
-         */
-        if (navMeshAgent.velocity.sqrMagnitude <= 0.01f)
-        {
-            return;
-        }
+        // Desired velocity represents the movement direction calculated by the NavMesh Agent.
+        Vector3 movementDirection = navMeshAgent.desiredVelocity;
 
-        /*
-         * Use the current NavMesh velocity
-         * as the desired facing direction.
-         */
-        Vector3 movementDirection =
-            navMeshAgent.velocity.normalized;
-
-        /*
-         * Ignore vertical rotation.
-         */
         movementDirection.y = 0f;
 
-        /*
-         * Stop if no useful horizontal
-         * direction remains.
-         */
-        if (movementDirection.sqrMagnitude <= 0.001f)
+        // Prevents rotation calculations when the enemy is barely moving.
+        if (movementDirection.sqrMagnitude <= 0.01f)
         {
             return;
         }
 
-        /*
-         * Create the desired facing rotation.
-         */
         Quaternion targetRotation =
-            Quaternion.LookRotation(
-                movementDirection
-            );
+            Quaternion.LookRotation(movementDirection.normalized);
 
-        /*
-         * Smoothly rotate toward
-         * the movement direction.
-         */
+        // Smoothly rotates toward the current movement direction.
         transform.rotation = Quaternion.Slerp(
             transform.rotation,
             targetRotation,
-            rotationSpeed * Time.deltaTime
-        );
+            rotationSpeed * Time.deltaTime);
     }
 
 
-    private void RotateTowardTarget(
-        Vector3 targetPosition
-    )
+    private void FaceTarget(Vector3 targetPosition)
     {
-        /*
-         * Calculate the horizontal direction
-         * from the enemy toward the target.
-         */
         Vector3 directionToTarget =
-            targetPosition -
-            transform.position;
+            targetPosition - transform.position;
 
-        /*
-         * Ignore vertical difference.
-         */
+        // Prevents the enemy from tilting vertically.
         directionToTarget.y = 0f;
 
-        /*
-         * Stop if the direction is too small
-         * to produce a valid rotation.
-         */
-        if (directionToTarget.sqrMagnitude <= 0.001f)
+        if (directionToTarget.sqrMagnitude <= 0.01f)
         {
             return;
         }
 
-        /*
-         * Create the desired facing rotation.
-         */
         Quaternion targetRotation =
-            Quaternion.LookRotation(
-                directionToTarget.normalized
-            );
+            Quaternion.LookRotation(directionToTarget.normalized);
 
-        /*
-         * Smoothly rotate toward the target.
-         */
+        // Smoothly rotates toward the target.
         transform.rotation = Quaternion.Slerp(
             transform.rotation,
             targetRotation,
-            rotationSpeed * Time.deltaTime
-        );
+            rotationSpeed * Time.deltaTime);
     }
 
     #endregion
-
-
-    // TODO: Add Patrol navigation between configured patrol points.
-    // TODO: Add Investigate movement toward sound or event locations.
-    // TODO: Add Return navigation back to the patrol route or home position.
-    // TODO: Add randomized Search movement around the last known position.
 }
