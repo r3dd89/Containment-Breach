@@ -787,6 +787,22 @@ MonoBehaviour:
   - {fileID: 60442823}
   - {fileID: 1058763895}
   currentPatrolIndex: 0
+--- !u!114 &985977495
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 985977482}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0414f4df1e3f6cb4ba3ec4564f4132c8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyPerception
+  hearingRange: 12
+  hasInvestigationTarget: 0
+  investigationPosition: {x: 0, y: 0, z: 0}
+  distanceToNoise: 0
 --- !u!1 &1037528408
 GameObject:
   m_ObjectHideFlags: 0
@@ -1258,6 +1274,52 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 4260233097412464699, guid: 302f315bde8348142a77ddb4752c733d, type: 3}
   m_PrefabInstance: {fileID: 1313161034}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1454594614
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1454594616}
+  - component: {fileID: 1454594615}
+  m_Layer: 0
+  m_Name: Noise Test Source
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1454594615
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1454594614}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2c15ed54ad3646344aa28280deb220bb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::NoiseEmitter
+  noiseRadius: 12
+  enableTestInput: 1
+--- !u!4 &1454594616
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1454594614}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 1, z: -2.75}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1455393490
 GameObject:
   m_ObjectHideFlags: 0
@@ -2171,6 +2233,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 4261737835246521462, guid: c60acae7824c4a0489ba4a3dc114d676, type: 3}
       insertIndex: -1
       addedObject: {fileID: 985977494}
+    - targetCorrespondingSourceObject: {fileID: 4261737835246521462, guid: c60acae7824c4a0489ba4a3dc114d676, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 985977495}
   m_SourcePrefab: {fileID: 100100000, guid: c60acae7824c4a0489ba4a3dc114d676, type: 3}
 --- !u!1 &2122326626
 GameObject:
@@ -2307,3 +2372,4 @@ SceneRoots:
   - {fileID: 1313161034}
   - {fileID: 2028912455}
   - {fileID: 1037528409}
+  - {fileID: 1454594616}

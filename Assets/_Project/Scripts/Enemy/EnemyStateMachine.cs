@@ -3,118 +3,94 @@ using UnityEngine;
 /*
  * Script Name: EnemyStateMachine
  * Purpose:
- * Controls the enemy's current behavioral state
- * and manages transitions between AI states.
+ * Controls the current behavioral state of an enemy and determines
+ * when the enemy should transition between AI states.
  *
- * This script currently handles:
- * - Tracking the current EnemyState
- * - Starting enemies in Patrol
- * - Switching from Patrol to Chase after target detection
- * - Switching from Chase to Attack when the target enters attack range
- * - Returning from Attack to Chase when the target moves away
- * - Switching to Search after losing the target
- * - Timing the Search state
- * - Switching from Search to Return
- * - Timing the Return state
- * - Returning to Patrol
+ * Current state flow:
+ * - Patrol
+ * - Investigate
+ * - Chase
+ * - Attack
+ * - Search
+ * - Return
  *
- * Individual behavior such as patrol routes,
- * search movement, investigation, and return navigation
- * remains separated from state-selection logic.
+ * The state machine decides WHAT behavior should be active.
+ * EnemyMovement controls HOW the enemy physically moves for that state.
  */
 
 public class EnemyStateMachine : MonoBehaviour
 {
     #region Component References
 
-    /*
-     * REGION: Component References
-     *
-     * This region stores references to the enemy systems
-     * used to determine state transitions.
-     */
-
     [Header("Component References")]
 
-    [SerializeField]
-    [Tooltip("The EnemyController that stores target and EnemyData information.")]
-    private EnemyController enemyController;
+    [Tooltip("Provides access to the enemy's current target and detection state.")]
+    [SerializeField] private EnemyController enemyController;
 
-    [SerializeField]
-    [Tooltip("The EnemyAttack component that reports whether the target is within attack range.")]
-    private EnemyAttack enemyAttack;
+    [Tooltip("Provides information about whether the player is inside attack range.")]
+    [SerializeField] private EnemyAttack enemyAttack;
 
-    #endregion
+    [Tooltip("Provides movement information such as investigation arrival and return-to-patrol status.")]
+    [SerializeField] private EnemyMovement enemyMovement;
 
-
-    #region State Settings
-
-    /*
-     * REGION: State Settings
-     *
-     * These values control timing for states
-     * that continue for a limited duration.
-     */
-
-    [Header("State Settings")]
-
-    [SerializeField]
-    [Min(0f)]
-    [Tooltip("How long the enemy searches after losing its target.")]
-    private float searchDuration = 5f;
-
-    [SerializeField]
-    [Min(0f)]
-    [Tooltip("How long the temporary Return state remains active before returning to Patrol.")]
-    private float returnDuration = 1f;
+    [Tooltip("Provides non-visual perception information such as noise investigation targets.")]
+    [SerializeField] private EnemyPerception enemyPerception;
 
     #endregion
 
 
-    #region Runtime State
+    #region Investigation Settings
 
-    /*
-     * REGION: Runtime State
-     *
-     * These values show the enemy's current AI state
-     * while the game is running.
-     */
+    [Header("Investigation Settings")]
 
-    [Header("Runtime State")]
+    [Tooltip("Amount of time the enemy remains at the disturbance location after physically reaching it.")]
+    [SerializeField] private float investigationDuration = 5f;
 
-    [SerializeField]
-    [Tooltip("The enemy's currently active behavioral state.")]
-    private EnemyState currentState = EnemyState.Patrol;
+    #endregion
 
-    [SerializeField]
-    [Tooltip("The amount of time the enemy has spent in its current state.")]
-    private float stateTimer;
 
-    [SerializeField]
-    [Tooltip("The last state the enemy was using before the current state.")]
-    private EnemyState previousState = EnemyState.Patrol;
+    #region Search Settings
+
+    [Header("Search Settings")]
+
+    [Tooltip("Amount of time the enemy remains in the Search state before returning to patrol.")]
+    [SerializeField] private float searchDuration = 5f;
+
+    #endregion
+
+
+    #region Runtime Debug Information
+
+    [Header("Runtime Debug Information")]
+
+    [Tooltip("The enemy's currently active AI state.")]
+    [SerializeField] private EnemyState currentState;
+
+    [Tooltip("The AI state that was active immediately before the current state.")]
+    [SerializeField] private EnemyState previousState;
+
+    [Tooltip("Tracks total time spent in the current state.")]
+    [SerializeField] private float stateTimer;
+
+    [Tooltip("Tracks how long the enemy has remained at the investigation location after arriving.")]
+    [SerializeField] private float investigationWaitTimer;
 
     #endregion
 
 
     #region Public Properties
 
-    /*
-     * REGION: Public Properties
-     *
-     * These properties allow other enemy systems
-     * to safely read state-machine information.
-     */
-
     public EnemyState CurrentState
     {
         get { return currentState; }
     }
 
+
     public EnemyState PreviousState
     {
         get { return previousState; }
     }
+
 
     public float StateTimer
     {
@@ -126,173 +102,166 @@ public class EnemyStateMachine : MonoBehaviour
 
     #region Unity Methods
 
-    /*
-     * REGION: Unity Methods
-     *
-     * Unity automatically calls these methods.
-     */
-
     private void Awake()
     {
-        /*
-         * Automatically find EnemyController
-         * if it was not assigned manually.
-         */
+        // Finds EnemyController automatically if the Inspector reference was not assigned.
         if (enemyController == null)
         {
             enemyController = GetComponent<EnemyController>();
         }
 
-        /*
-         * Automatically find EnemyAttack
-         * if it was not assigned manually.
-         */
+        // Finds EnemyAttack automatically if needed.
         if (enemyAttack == null)
         {
             enemyAttack = GetComponent<EnemyAttack>();
+        }
+
+        // Finds EnemyMovement automatically if needed.
+        if (enemyMovement == null)
+        {
+            enemyMovement = GetComponent<EnemyMovement>();
+        }
+
+        // Finds EnemyPerception automatically if needed.
+        if (enemyPerception == null)
+        {
+            enemyPerception = GetComponent<EnemyPerception>();
         }
     }
 
 
     private void Start()
     {
-        /*
-         * Initialize the enemy in Patrol state.
-         */
-        currentState = EnemyState.Patrol;
-
-        /*
-         * Initialize the previous state
-         * to match the starting state.
-         */
-        previousState = EnemyState.Patrol;
-
-        /*
-         * Reset the state timer.
-         */
-        stateTimer = 0f;
+        // Enemies begin in the normal patrol state.
+        ChangeState(EnemyState.Patrol);
     }
 
 
     private void Update()
     {
-        /*
-         * Stop state-machine logic if the required
-         * EnemyController component is missing.
-         */
-        if (enemyController == null)
-        {
-            return;
-        }
-
-        /*
-         * Track how long the current state
-         * has been active.
-         */
+        // Tracks total time spent in the current state.
         stateTimer += Time.deltaTime;
 
-        /*
-         * Run transition logic for the active state.
-         */
-        EvaluateCurrentState();
+        // Runs transition logic for the active state.
+        switch (currentState)
+        {
+            case EnemyState.Patrol:
+                UpdatePatrolState();
+                break;
+
+            case EnemyState.Investigate:
+                UpdateInvestigateState();
+                break;
+
+            case EnemyState.Chase:
+                UpdateChaseState();
+                break;
+
+            case EnemyState.Attack:
+                UpdateAttackState();
+                break;
+
+            case EnemyState.Search:
+                UpdateSearchState();
+                break;
+
+            case EnemyState.Return:
+                UpdateReturnState();
+                break;
+        }
     }
 
     #endregion
 
 
-    #region State Evaluation Methods
+    #region Patrol State
 
-    /*
-     * REGION: State Evaluation Methods
-     *
-     * This region determines which transition rules
-     * should be checked for the active state.
-     */
-
-    private void EvaluateCurrentState()
+    private void UpdatePatrolState()
     {
-        switch (currentState)
-        {
-            case EnemyState.Patrol:
-                EvaluatePatrolState();
-                break;
-
-            case EnemyState.Investigate:
-                EvaluateInvestigateState();
-                break;
-
-            case EnemyState.Chase:
-                EvaluateChaseState();
-                break;
-
-            case EnemyState.Search:
-                EvaluateSearchState();
-                break;
-
-            case EnemyState.Attack:
-                EvaluateAttackState();
-                break;
-
-            case EnemyState.Return:
-                EvaluateReturnState();
-                break;
-        }
-    }
-
-
-    private void EvaluatePatrolState()
-    {
-        /*
-         * A confirmed target immediately changes
-         * the enemy from Patrol to Chase.
-         */
-        if (enemyController.HasDetectedTarget)
+        // Visual detection takes priority over hearing.
+        if (enemyController != null &&
+            enemyController.HasDetectedTarget &&
+            enemyController.CurrentTarget != null)
         {
             ChangeState(EnemyState.Chase);
-        }
-
-        // TODO: Add patrol-route behavior.
-        // TODO: Transition to Investigate after suspicious sound or environmental activity.
-    }
-
-
-    private void EvaluateInvestigateState()
-    {
-        /*
-         * A confirmed player detection takes priority
-         * over investigation behavior.
-         */
-        if (enemyController.HasDetectedTarget)
-        {
-            ChangeState(EnemyState.Chase);
-
             return;
         }
 
-        // TODO: Move toward the investigation location.
-        // TODO: Search the immediate investigation area.
-        // TODO: Return to Patrol if nothing is found.
+        // A valid noise target causes the enemy to investigate.
+        if (enemyPerception != null &&
+            enemyPerception.HasInvestigationTarget)
+        {
+            ChangeState(EnemyState.Investigate);
+        }
     }
 
+    #endregion
 
-    private void EvaluateChaseState()
+
+    #region Investigate State
+
+    private void UpdateInvestigateState()
     {
-        /*
-         * Losing the current target causes the enemy
-         * to begin searching.
-         */
-        if (!enemyController.HasDetectedTarget ||
+        // Seeing the player during an investigation immediately starts Chase.
+        if (enemyController != null &&
+            enemyController.HasDetectedTarget &&
+            enemyController.CurrentTarget != null)
+        {
+            ChangeState(EnemyState.Chase);
+            return;
+        }
+
+        // Stops investigation if the perception target no longer exists.
+        if (enemyPerception == null ||
+            !enemyPerception.HasInvestigationTarget)
+        {
+            ChangeState(EnemyState.Return);
+            return;
+        }
+
+        // Travel time does NOT count toward the investigation wait time.
+        if (enemyMovement == null ||
+            !enemyMovement.HasReachedInvestigationPosition)
+        {
+            investigationWaitTimer = 0f;
+            return;
+        }
+
+        // The enemy has physically reached the disturbance location.
+        // Only now does the investigation timer begin.
+        investigationWaitTimer += Time.deltaTime;
+
+        // Remain at the location until the investigation duration finishes.
+        if (investigationWaitTimer < investigationDuration)
+        {
+            return;
+        }
+
+        // Clears the completed noise target so Patrol does not immediately
+        // re-enter Investigate after returning.
+        enemyPerception.ClearInvestigationTarget();
+
+        // Return to the patrol route after investigating the disturbance.
+        ChangeState(EnemyState.Return);
+    }
+
+    #endregion
+
+
+    #region Chase State
+
+    private void UpdateChaseState()
+    {
+        // Losing the player causes the enemy to search the last known position.
+        if (enemyController == null ||
+            !enemyController.HasDetectedTarget ||
             enemyController.CurrentTarget == null)
         {
             ChangeState(EnemyState.Search);
-
             return;
         }
 
-        /*
-         * If the target enters attack range,
-         * switch from Chase to Attack.
-         */
+        // Enter Attack once the player reaches attack range.
         if (enemyAttack != null &&
             enemyAttack.TargetInAttackRange)
         {
@@ -300,25 +269,23 @@ public class EnemyStateMachine : MonoBehaviour
         }
     }
 
+    #endregion
 
-    private void EvaluateAttackState()
+
+    #region Attack State
+
+    private void UpdateAttackState()
     {
-        /*
-         * Losing the target during combat
-         * causes the enemy to begin searching.
-         */
-        if (!enemyController.HasDetectedTarget ||
+        // Losing the player while attacking begins Search.
+        if (enemyController == null ||
+            !enemyController.HasDetectedTarget ||
             enemyController.CurrentTarget == null)
         {
             ChangeState(EnemyState.Search);
-
             return;
         }
 
-        /*
-         * If the target leaves attack range,
-         * resume chasing.
-         */
+        // Resume Chase if the player moves outside attack range.
         if (enemyAttack != null &&
             !enemyAttack.TargetInAttackRange)
         {
@@ -326,59 +293,60 @@ public class EnemyStateMachine : MonoBehaviour
         }
     }
 
+    #endregion
 
-    private void EvaluateSearchState()
+
+    #region Search State
+
+    private void UpdateSearchState()
     {
-        /*
-         * Reacquiring the player immediately
-         * returns the enemy to Chase.
-         */
-        if (enemyController.HasDetectedTarget)
+        // Reacquiring the player immediately interrupts Search.
+        if (enemyController != null &&
+            enemyController.HasDetectedTarget &&
+            enemyController.CurrentTarget != null)
         {
             ChangeState(EnemyState.Chase);
-
             return;
         }
 
-        /*
-         * Continue searching until the configured
-         * search duration expires.
-         */
+        // Search currently uses a fixed duration.
         if (stateTimer >= searchDuration)
         {
             ChangeState(EnemyState.Return);
         }
-
-        // TODO: Store and search around the player's last known position.
-        // TODO: Add randomized nearby search points.
-        // TODO: Add search animation and sensory behavior.
     }
 
+    #endregion
 
-    private void EvaluateReturnState()
+
+    #region Return State
+
+    private void UpdateReturnState()
     {
-        /*
-         * Player detection interrupts the Return state
-         * and immediately begins another chase.
-         */
-        if (enemyController.HasDetectedTarget)
+        // Visual detection always takes priority.
+        if (enemyController != null &&
+            enemyController.HasDetectedTarget &&
+            enemyController.CurrentTarget != null)
         {
             ChangeState(EnemyState.Chase);
-
             return;
         }
 
-        /*
-         * The current temporary implementation
-         * transitions back to Patrol after a short delay.
-         */
-        if (stateTimer >= returnDuration)
+        // A new noise can interrupt Return.
+        if (enemyPerception != null &&
+            enemyPerception.HasInvestigationTarget)
+        {
+            ChangeState(EnemyState.Investigate);
+            return;
+        }
+
+        // Return finishes only after EnemyMovement reports that the
+        // patrol route has physically been reached.
+        if (enemyMovement != null &&
+            enemyMovement.HasReturnedToPatrolRoute)
         {
             ChangeState(EnemyState.Patrol);
         }
-
-        // TODO: Replace the temporary timer with navigation
-        // back to the enemy's patrol route or home position.
     }
 
     #endregion
@@ -386,38 +354,25 @@ public class EnemyStateMachine : MonoBehaviour
 
     #region State Transition Methods
 
-    /*
-     * REGION: State Transition Methods
-     *
-     * This region handles changing from one state
-     * to another and resetting state-specific timing.
-     */
-
     private void ChangeState(EnemyState newState)
     {
-        /*
-         * Ignore requests to enter the state
-         * that is already active.
-         */
+        // Prevents unnecessary transitions into the currently active state.
         if (currentState == newState)
         {
             return;
         }
 
-        /*
-         * Store the state being exited.
-         */
+        // Stores the previous state for Inspector debugging.
         previousState = currentState;
 
-        /*
-         * Assign the new active state.
-         */
+        // Activates the requested state.
         currentState = newState;
 
-        /*
-         * Reset the timer whenever a new state begins.
-         */
+        // Resets the general state timer.
         stateTimer = 0f;
+
+        // Investigation waiting must begin fresh whenever a state changes.
+        investigationWaitTimer = 0f;
     }
 
     #endregion
