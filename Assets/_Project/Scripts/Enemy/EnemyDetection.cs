@@ -7,16 +7,14 @@ using UnityEngine;
  *
  * This script uses values from EnemyData through EnemyController.
  *
- * It currently handles:
+ * This script currently handles:
  * - Checking detection range
  * - Checking field of view
  * - Checking line of sight
  * - Assigning the player as the current target
  * - Keeping the target while within lose-target range
  * - Clearing the target when the player moves too far away
- *
- * This script does NOT move the enemy.
- * Movement and chasing will be handled by another system.
+ * - Storing the player's last known position
  */
 
 public class EnemyDetection : MonoBehaviour
@@ -89,7 +87,7 @@ public class EnemyDetection : MonoBehaviour
      * REGION: Runtime Detection State
      *
      * These values are visible in the Inspector
-     * for checking what the detection system is doing.
+     * so the current detection state can be monitored.
      */
 
     [Header("Runtime Detection State")]
@@ -105,6 +103,41 @@ public class EnemyDetection : MonoBehaviour
     [SerializeField]
     [Tooltip("Shows whether the enemy currently has an unobstructed view of the player.")]
     private bool hasLineOfSight;
+
+    [SerializeField]
+    [Tooltip("Stores the last position where the enemy had confirmed visual contact with the player.")]
+    private Vector3 lastKnownPlayerPosition;
+
+    [SerializeField]
+    [Tooltip("Shows whether a valid last known player position has been recorded.")]
+    private bool hasLastKnownPosition;
+
+    #endregion
+
+
+    #region Public Properties
+
+    /*
+     * REGION: Public Properties
+     *
+     * These properties allow other enemy systems
+     * to safely read detection information.
+     */
+
+    public bool HasLineOfSight
+    {
+        get { return hasLineOfSight; }
+    }
+
+    public Vector3 LastKnownPlayerPosition
+    {
+        get { return lastKnownPlayerPosition; }
+    }
+
+    public bool HasLastKnownPosition
+    {
+        get { return hasLastKnownPosition; }
+    }
 
     #endregion
 
@@ -127,17 +160,6 @@ public class EnemyDetection : MonoBehaviour
         {
             enemyController = GetComponent<EnemyController>();
         }
-
-        /*
-         * Report an error if EnemyController is still missing.
-         */
-        if (enemyController == null)
-        {
-            Debug.LogError(
-                "EnemyDetection on " + gameObject.name +
-                " requires an EnemyController component."
-            );
-        }
     }
 
 
@@ -146,12 +168,15 @@ public class EnemyDetection : MonoBehaviour
         /*
          * Stop detection if a required reference is missing.
          */
-        if (enemyController == null || playerTarget == null)
+        if (enemyController == null ||
+            playerTarget == null)
         {
             return;
         }
 
-        // Update the current distance to the player.
+        /*
+         * Update the current distance to the player.
+         */
         distanceToPlayer = Vector3.Distance(
             transform.position,
             playerTarget.position
@@ -190,10 +215,11 @@ public class EnemyDetection : MonoBehaviour
     private void TryDetectPlayer()
     {
         /*
-         * The player must first be inside the enemy's
-         * configured detection range.
+         * The player must first be inside
+         * the configured detection range.
          */
-        if (distanceToPlayer > enemyController.DetectionRange)
+        if (distanceToPlayer >
+            enemyController.DetectionRange)
         {
             ResetDetectionState();
 
@@ -204,7 +230,8 @@ public class EnemyDetection : MonoBehaviour
          * Check whether the player is inside
          * the enemy's horizontal field of view.
          */
-        playerInsideFieldOfView = IsPlayerInsideFieldOfView();
+        playerInsideFieldOfView =
+            IsPlayerInsideFieldOfView();
 
         if (!playerInsideFieldOfView)
         {
@@ -214,22 +241,30 @@ public class EnemyDetection : MonoBehaviour
         }
 
         /*
-         * If the player is inside the field of view,
-         * check whether a wall or other obstacle
-         * blocks the enemy's view.
+         * Check whether an obstacle blocks
+         * the enemy's view of the player.
          */
-        hasLineOfSight = CheckLineOfSight();
+        hasLineOfSight =
+            CheckLineOfSight();
 
         /*
-         * Detection succeeds only when:
-         *
-         * - The player is within detection range
-         * - The player is inside the field of view
-         * - The enemy has line of sight
+         * Detection succeeds only when
+         * line of sight is confirmed.
          */
         if (hasLineOfSight)
         {
-            enemyController.SetTarget(playerTarget);
+            /*
+             * Store the player's position
+             * as the most recent confirmed location.
+             */
+            UpdateLastKnownPlayerPosition();
+
+            /*
+             * Register the player as the active target.
+             */
+            enemyController.SetTarget(
+                playerTarget
+            );
         }
     }
 
@@ -237,14 +272,11 @@ public class EnemyDetection : MonoBehaviour
     private void HandleExistingTarget()
     {
         /*
-         * Once the player has been detected,
-         * the enemy can keep tracking the player
-         * beyond the original detection range.
-         *
-         * LoseTargetRange controls how far the player
-         * must get before the enemy completely gives up.
+         * Clear the target if the player moves
+         * beyond the configured lose-target range.
          */
-        if (distanceToPlayer > enemyController.LoseTargetRange)
+        if (distanceToPlayer >
+            enemyController.LoseTargetRange)
         {
             enemyController.ClearTarget();
 
@@ -254,15 +286,27 @@ public class EnemyDetection : MonoBehaviour
         }
 
         /*
-         * Continue updating field-of-view and line-of-sight
-         * information while the target remains tracked.
-         *
-         * These values can later be used by search,
-         * investigate, chase, and attack states.
+         * Continue checking field of view
+         * and line of sight while tracking the player.
          */
-        playerInsideFieldOfView = IsPlayerInsideFieldOfView();
+        playerInsideFieldOfView =
+            IsPlayerInsideFieldOfView();
 
-        hasLineOfSight = CheckLineOfSight();
+        hasLineOfSight =
+            CheckLineOfSight();
+
+        /*
+         * Update the last known position only
+         * while visual contact is actually confirmed.
+         *
+         * Once line of sight is lost,
+         * the stored value remains at the last
+         * position where the player was seen.
+         */
+        if (hasLineOfSight)
+        {
+            UpdateLastKnownPlayerPosition();
+        }
     }
 
 
@@ -273,48 +317,47 @@ public class EnemyDetection : MonoBehaviour
          * toward the player.
          */
         Vector3 directionToPlayer =
-            playerTarget.position - transform.position;
+            playerTarget.position -
+            transform.position;
 
         /*
-         * Ignore vertical difference for the field-of-view check.
-         *
-         * This keeps the check focused on horizontal vision.
+         * Ignore vertical difference for
+         * the horizontal field-of-view check.
          */
         directionToPlayer.y = 0f;
 
         /*
-         * If the player is directly on top of the enemy,
-         * avoid calculating an unnecessary angle.
+         * Avoid calculating an unnecessary angle
+         * if the player is extremely close.
          */
         if (directionToPlayer.sqrMagnitude <= 0.001f)
         {
             return true;
         }
 
-        // Normalize the direction before comparing angles.
+        /*
+         * Normalize before comparing directions.
+         */
         directionToPlayer.Normalize();
 
         /*
-         * Calculate the horizontal angle between:
-         *
-         * - The enemy's forward direction
-         * - The direction toward the player
+         * Calculate the horizontal angle between
+         * the enemy's forward direction
+         * and the direction toward the player.
          */
-        float angleToPlayer = Vector3.Angle(
-            transform.forward,
-            directionToPlayer
-        );
+        float angleToPlayer =
+            Vector3.Angle(
+                transform.forward,
+                directionToPlayer
+            );
 
         /*
-         * FieldOfView represents the entire viewing cone.
-         *
-         * Half of that value exists on each side
-         * of the enemy's forward direction.
+         * FieldOfView represents the full cone,
+         * so half of that value exists on each side.
          */
         float halfFieldOfView =
             enemyController.FieldOfView / 2f;
 
-        // Return true if the player is inside the viewing cone.
         return angleToPlayer <= halfFieldOfView;
     }
 
@@ -322,40 +365,36 @@ public class EnemyDetection : MonoBehaviour
     private bool CheckLineOfSight()
     {
         /*
-         * Create an approximate eye position for the enemy.
+         * Create an approximate eye position
+         * for the enemy.
          */
         Vector3 enemyEyePosition =
             transform.position +
             (Vector3.up * eyeHeight);
 
         /*
-         * Create an approximate center point on the player.
+         * Create an approximate target point
+         * on the player.
          */
         Vector3 playerAimPosition =
             playerTarget.position +
             (Vector3.up * playerTargetHeight);
 
         /*
-         * Calculate the direction from the enemy's eye
-         * toward the player's target point.
+         * Calculate direction and distance
+         * from enemy eye position to the player.
          */
         Vector3 directionToPlayer =
-            playerAimPosition - enemyEyePosition;
+            playerAimPosition -
+            enemyEyePosition;
 
-        // Calculate the total ray distance.
-        float rayDistance = directionToPlayer.magnitude;
+        float rayDistance =
+            directionToPlayer.magnitude;
 
-        /*
-         * Normalize the direction before using it
-         * in the physics raycast.
-         */
         directionToPlayer.Normalize();
 
         /*
          * Cast a ray toward the player.
-         *
-         * The ray checks all layers currently included
-         * in obstacleLayerMask.
          */
         if (Physics.Raycast(
             enemyEyePosition,
@@ -367,10 +406,8 @@ public class EnemyDetection : MonoBehaviour
         ))
         {
             /*
-             * The ray may hit the player's own collider.
-             *
-             * Detection succeeds if the object hit
-             * belongs to the playerTarget hierarchy.
+             * Visual contact succeeds if the ray
+             * reaches the player hierarchy first.
              */
             if (hit.transform == playerTarget ||
                 hit.transform.IsChildOf(playerTarget))
@@ -379,32 +416,50 @@ public class EnemyDetection : MonoBehaviour
             }
 
             /*
-             * Something else was hit first,
-             * so line of sight is blocked.
+             * Another collider blocked the view.
              */
             return false;
         }
 
         /*
-         * If the ray did not hit anything,
-         * line of sight is considered clear.
-         *
-         * This is useful if the player's transform
-         * does not currently have a collider.
+         * If nothing was hit,
+         * the path is considered unobstructed.
          */
         return true;
+    }
+
+
+    private void UpdateLastKnownPlayerPosition()
+    {
+        /*
+         * Store the player's current world position.
+         */
+        lastKnownPlayerPosition =
+            playerTarget.position;
+
+        /*
+         * Mark the stored position as valid.
+         */
+        hasLastKnownPosition = true;
     }
 
 
     private void ResetDetectionState()
     {
         /*
-         * Reset runtime detection information
-         * when the player is outside detection conditions.
+         * Reset current visual detection information.
+         *
+         * The last known position is intentionally
+         * preserved so Search behavior can use it.
          */
         playerInsideFieldOfView = false;
         hasLineOfSight = false;
     }
 
     #endregion
+
+
+    // TODO: Add hearing-based detection.
+    // TODO: Add investigation positions from environmental sounds.
+    // TODO: Add configurable detection update intervals for optimization.
 }
