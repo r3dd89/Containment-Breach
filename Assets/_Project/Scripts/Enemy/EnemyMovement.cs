@@ -8,16 +8,16 @@ using UnityEngine.AI;
  *
  * Current supported movement:
  * - Patrol: Moves between assigned patrol points in order.
- * - Investigate: Moves toward a perceived noise location.
+ * - Investigate: Moves toward a perceived noise location and scans the area.
  * - Chase: Moves directly toward the detected player.
  * - Attack: Stops movement and faces the player.
  * - Search: Moves to the player's last known position.
  * - Return: Navigates back to the active patrol route.
  *
- * Future movement:
+ * TODO:
  * - Randomized searching around the last known player position.
  * - More advanced patrol route selection.
- * - More complex investigation behavior after reaching a disturbance.
+ * - More complex investigation patterns.
  */
 
 public class EnemyMovement : MonoBehaviour
@@ -63,6 +63,12 @@ public class EnemyMovement : MonoBehaviour
 
     [Tooltip("Distance from an investigation position that counts as reaching the disturbance.")]
     [SerializeField] private float investigationArrivalDistance = 0.75f;
+
+    [Tooltip("Maximum horizontal angle the enemy turns left and right while scanning.")]
+    [SerializeField] private float investigationScanAngle = 60f;
+
+    [Tooltip("Controls how quickly the enemy rotates while scanning the investigation area.")]
+    [SerializeField] private float investigationScanSpeed = 1.5f;
 
     #endregion
 
@@ -127,6 +133,12 @@ public class EnemyMovement : MonoBehaviour
 
     [Tooltip("Current destination used during the Return state.")]
     [SerializeField] private Vector3 returnDestination;
+
+    [Tooltip("Facing direction recorded when the enemy reaches the investigation point.")]
+    [SerializeField] private float investigationBaseYaw;
+
+    [Tooltip("Tracks whether the investigation scan starting direction has been recorded.")]
+    [SerializeField] private bool investigationScanInitialized;
 
     #endregion
 
@@ -220,8 +232,7 @@ public class EnemyMovement : MonoBehaviour
 
     private void Start()
     {
-        // Rotation is handled manually instead of allowing the NavMeshAgent
-        // to rotate the enemy automatically.
+        // Rotation is controlled manually for more predictable enemy behavior.
         if (navMeshAgent != null)
         {
             navMeshAgent.updateRotation = false;
@@ -284,51 +295,41 @@ public class EnemyMovement : MonoBehaviour
     {
         hasReturnedToPatrolRoute = false;
         hasReachedInvestigationPosition = false;
+        investigationScanInitialized = false;
 
-        // Patrol cannot function without a valid patrol route.
         if (enemyPatrolRoute == null)
         {
             StopMovement();
             return;
         }
 
-        // Patrol cannot function if no patrol points were assigned.
         if (!enemyPatrolRoute.HasPatrolPoints)
         {
             StopMovement();
             return;
         }
 
-        // Gets the patrol point currently selected by the route.
         Transform currentPatrolPoint = enemyPatrolRoute.CurrentPatrolPoint;
 
-        // Stops safely if the current patrol point reference is missing.
         if (currentPatrolPoint == null)
         {
             StopMovement();
             return;
         }
 
-        // Stores the current patrol destination for Inspector debugging.
         patrolDestination = currentPatrolPoint.position;
 
-        // Patrol uses normal movement speed.
         navMeshAgent.speed = enemyController.MoveSpeed;
-
-        // Allows the NavMeshAgent to move.
         navMeshAgent.isStopped = false;
-
-        // Sends the enemy toward the active patrol point.
         navMeshAgent.SetDestination(patrolDestination);
 
-        // Rotates toward the calculated movement direction.
         RotateTowardMovementDirection();
 
-        // Calculates horizontal distance to the patrol point.
         float distanceToPatrolPoint =
-            GetHorizontalDistance(transform.position, patrolDestination);
+            GetHorizontalDistance(
+                transform.position,
+                patrolDestination);
 
-        // Advances to the next patrol point after arriving.
         if (distanceToPatrolPoint <= patrolArrivalDistance)
         {
             enemyPatrolRoute.AdvanceToNextPatrolPoint();
@@ -347,46 +348,38 @@ public class EnemyMovement : MonoBehaviour
     {
         hasReturnedToPatrolRoute = false;
 
-        // Investigation requires an active perception component.
         if (enemyPerception == null)
         {
             StopMovement();
             return;
         }
 
-        // Stops safely if there is no active disturbance to investigate.
         if (!enemyPerception.HasInvestigationTarget)
         {
             StopMovement();
             return;
         }
 
-        // Copies the currently stored disturbance location.
         investigationDestination =
             enemyPerception.InvestigationPosition;
 
-        // Investigation uses normal movement speed.
         navMeshAgent.speed = enemyController.MoveSpeed;
 
-        // Calculates horizontal distance to the investigation location.
         float distanceToInvestigationPosition =
             GetHorizontalDistance(
                 transform.position,
                 investigationDestination);
 
-        // Stops after reaching the source of the disturbance.
-        if (distanceToInvestigationPosition <= investigationArrivalDistance)
+        // Continues traveling until the disturbance position is reached.
+        if (distanceToInvestigationPosition > investigationArrivalDistance)
         {
-            navMeshAgent.isStopped = true;
+            hasReachedInvestigationPosition = false;
+            investigationScanInitialized = false;
 
-            // Removes the completed NavMesh path.
-            if (navMeshAgent.hasPath)
-            {
-                navMeshAgent.ResetPath();
-            }
+            navMeshAgent.isStopped = false;
+            navMeshAgent.SetDestination(investigationDestination);
 
-            // Reports arrival for debugging and future state-machine logic.
-            hasReachedInvestigationPosition = true;
+            RotateTowardMovementDirection();
 
             isChasing = false;
             isSearching = false;
@@ -394,20 +387,58 @@ public class EnemyMovement : MonoBehaviour
             return;
         }
 
-        // The investigation location has not been reached yet.
-        hasReachedInvestigationPosition = false;
+        // Stops after arriving at the noise location.
+        navMeshAgent.isStopped = true;
 
-        // Allows movement toward the disturbance.
-        navMeshAgent.isStopped = false;
+        if (navMeshAgent.hasPath)
+        {
+            navMeshAgent.ResetPath();
+        }
 
-        // Sends the enemy toward the stored perception position.
-        navMeshAgent.SetDestination(investigationDestination);
+        hasReachedInvestigationPosition = true;
 
-        // Rotates naturally toward the NavMesh movement direction.
-        RotateTowardMovementDirection();
+        // Records the direction the enemy was facing upon arrival.
+        if (!investigationScanInitialized)
+        {
+            investigationBaseYaw = transform.eulerAngles.y;
+            investigationScanInitialized = true;
+        }
+
+        // Rotates left and right while the investigation timer runs.
+        PerformInvestigationScan();
 
         isChasing = false;
         isSearching = false;
+    }
+
+
+    private void PerformInvestigationScan()
+    {
+        // PingPong creates a repeating value that moves smoothly
+        // between zero and twice the configured scan angle.
+        float scanOffset =
+            Mathf.PingPong(
+                Time.time * investigationScanSpeed * investigationScanAngle,
+                investigationScanAngle * 2f)
+            - investigationScanAngle;
+
+        // Applies the scan offset relative to the direction the enemy
+        // was facing when the disturbance location was reached.
+        float targetYaw =
+            investigationBaseYaw + scanOffset;
+
+        Quaternion targetRotation =
+            Quaternion.Euler(
+                0f,
+                targetYaw,
+                0f);
+
+        // Smoothly rotates toward the current scan direction.
+        transform.rotation =
+            Quaternion.Slerp(
+                transform.rotation,
+                targetRotation,
+                rotationSpeed * Time.deltaTime);
     }
 
     #endregion
@@ -419,26 +450,25 @@ public class EnemyMovement : MonoBehaviour
     {
         hasReturnedToPatrolRoute = false;
         hasReachedInvestigationPosition = false;
+        investigationScanInitialized = false;
 
         Transform target = enemyController.CurrentTarget;
 
-        // Stops movement if there is no valid player target.
         if (target == null)
         {
             StopMovement();
             return;
         }
 
-        // Calculates the distance between the enemy and player.
         distanceToTarget =
-            Vector3.Distance(transform.position, target.position);
+            Vector3.Distance(
+                transform.position,
+                target.position);
 
-        // Stops advancing once the target is inside attack range.
         if (distanceToTarget <= enemyController.AttackRange)
         {
             navMeshAgent.isStopped = true;
 
-            // Keeps the enemy facing the target.
             FaceTarget(target.position);
 
             isChasing = false;
@@ -446,16 +476,10 @@ public class EnemyMovement : MonoBehaviour
             return;
         }
 
-        // Chase uses the faster chase speed stored in EnemyData.
         navMeshAgent.speed = enemyController.ChaseSpeed;
-
-        // Allows NavMesh movement.
         navMeshAgent.isStopped = false;
-
-        // Continuously follows the moving player.
         navMeshAgent.SetDestination(target.position);
 
-        // Rotates toward the current movement direction.
         RotateTowardMovementDirection();
 
         isChasing = true;
@@ -471,13 +495,12 @@ public class EnemyMovement : MonoBehaviour
     {
         hasReturnedToPatrolRoute = false;
         hasReachedInvestigationPosition = false;
+        investigationScanInitialized = false;
 
         Transform target = enemyController.CurrentTarget;
 
-        // Keeps the enemy stationary during attack behavior.
         StopMovement();
 
-        // Continues facing the player while attacking.
         if (target != null)
         {
             FaceTarget(target.position);
@@ -493,39 +516,34 @@ public class EnemyMovement : MonoBehaviour
     {
         hasReturnedToPatrolRoute = false;
         hasReachedInvestigationPosition = false;
+        investigationScanInitialized = false;
 
-        // Search requires visual detection memory.
         if (enemyDetection == null)
         {
             StopMovement();
             return;
         }
 
-        // Stops safely if no previous player position exists.
         if (!enemyDetection.HasLastKnownPosition)
         {
             StopMovement();
             return;
         }
 
-        // Uses the player's last visible location.
-        searchDestination = enemyDetection.LastKnownPlayerPosition;
+        searchDestination =
+            enemyDetection.LastKnownPlayerPosition;
 
-        // Search uses normal movement speed.
         navMeshAgent.speed = enemyController.MoveSpeed;
 
-        // Calculates horizontal distance to the search destination.
         float distanceToSearchDestination =
             GetHorizontalDistance(
                 transform.position,
                 searchDestination);
 
-        // Stops after reaching the remembered location.
         if (distanceToSearchDestination <= searchArrivalDistance)
         {
             navMeshAgent.isStopped = true;
 
-            // Removes the completed navigation path.
             if (navMeshAgent.hasPath)
             {
                 navMeshAgent.ResetPath();
@@ -537,9 +555,7 @@ public class EnemyMovement : MonoBehaviour
             return;
         }
 
-        // Continues toward the remembered player location.
         navMeshAgent.isStopped = false;
-
         navMeshAgent.SetDestination(searchDestination);
 
         RotateTowardMovementDirection();
@@ -556,55 +572,49 @@ public class EnemyMovement : MonoBehaviour
     private void HandleReturn()
     {
         hasReachedInvestigationPosition = false;
+        investigationScanInitialized = false;
 
-        // Return behavior requires a patrol route.
         if (enemyPatrolRoute == null)
         {
             StopMovement();
             return;
         }
 
-        // A patrol route without points cannot provide a return destination.
         if (!enemyPatrolRoute.HasPatrolPoints)
         {
             StopMovement();
             return;
         }
 
-        // Uses the currently selected patrol point as the return destination.
-        Transform currentPatrolPoint = enemyPatrolRoute.CurrentPatrolPoint;
+        Transform currentPatrolPoint =
+            enemyPatrolRoute.CurrentPatrolPoint;
 
-        // Stops safely if the patrol point reference is missing.
         if (currentPatrolPoint == null)
         {
             StopMovement();
             return;
         }
 
-        // Stores the destination for Inspector debugging.
-        returnDestination = currentPatrolPoint.position;
+        returnDestination =
+            currentPatrolPoint.position;
 
-        // Return uses normal movement speed.
-        navMeshAgent.speed = enemyController.MoveSpeed;
+        navMeshAgent.speed =
+            enemyController.MoveSpeed;
 
-        // Calculates horizontal distance to the patrol route.
         float distanceToReturnDestination =
             GetHorizontalDistance(
                 transform.position,
                 returnDestination);
 
-        // Stops once the patrol route has been reached.
         if (distanceToReturnDestination <= returnArrivalDistance)
         {
             navMeshAgent.isStopped = true;
 
-            // Removes the completed path.
             if (navMeshAgent.hasPath)
             {
                 navMeshAgent.ResetPath();
             }
 
-            // Reports successful return to EnemyStateMachine.
             hasReturnedToPatrolRoute = true;
 
             isChasing = false;
@@ -613,12 +623,9 @@ public class EnemyMovement : MonoBehaviour
             return;
         }
 
-        // The patrol route has not been reached yet.
         hasReturnedToPatrolRoute = false;
 
-        // Allows movement toward the patrol route.
         navMeshAgent.isStopped = false;
-
         navMeshAgent.SetDestination(returnDestination);
 
         RotateTowardMovementDirection();
@@ -639,10 +646,8 @@ public class EnemyMovement : MonoBehaviour
             return;
         }
 
-        // Prevents the NavMeshAgent from continuing along its current route.
         navMeshAgent.isStopped = true;
 
-        // Clears any previous path still stored by the agent.
         if (navMeshAgent.hasPath)
         {
             navMeshAgent.ResetPath();
@@ -650,7 +655,6 @@ public class EnemyMovement : MonoBehaviour
 
         isChasing = false;
         isSearching = false;
-
         distanceToTarget = 0f;
     }
 
@@ -659,11 +663,9 @@ public class EnemyMovement : MonoBehaviour
         Vector3 firstPosition,
         Vector3 secondPosition)
     {
-        // Removes vertical differences because navigation occurs across the floor plane.
         firstPosition.y = 0f;
         secondPosition.y = 0f;
 
-        // Returns the horizontal distance between the two positions.
         return Vector3.Distance(
             firstPosition,
             secondPosition);
@@ -672,52 +674,49 @@ public class EnemyMovement : MonoBehaviour
 
     private void RotateTowardMovementDirection()
     {
-        // Desired velocity represents the direction calculated by NavMesh pathfinding.
-        Vector3 movementDirection = navMeshAgent.desiredVelocity;
+        Vector3 movementDirection =
+            navMeshAgent.desiredVelocity;
 
-        // Prevents vertical rotation.
         movementDirection.y = 0f;
 
-        // Avoids unnecessary rotation when movement is effectively zero.
         if (movementDirection.sqrMagnitude <= 0.01f)
         {
             return;
         }
 
         Quaternion targetRotation =
-            Quaternion.LookRotation(movementDirection.normalized);
+            Quaternion.LookRotation(
+                movementDirection.normalized);
 
-        // Smoothly rotates toward the current movement direction.
-        transform.rotation = Quaternion.Slerp(
-            transform.rotation,
-            targetRotation,
-            rotationSpeed * Time.deltaTime);
+        transform.rotation =
+            Quaternion.Slerp(
+                transform.rotation,
+                targetRotation,
+                rotationSpeed * Time.deltaTime);
     }
 
 
     private void FaceTarget(Vector3 targetPosition)
     {
-        // Calculates the horizontal direction toward the target.
         Vector3 directionToTarget =
             targetPosition - transform.position;
 
-        // Prevents upward or downward tilting.
         directionToTarget.y = 0f;
 
-        // Avoids creating a rotation from an effectively zero direction.
         if (directionToTarget.sqrMagnitude <= 0.01f)
         {
             return;
         }
 
         Quaternion targetRotation =
-            Quaternion.LookRotation(directionToTarget.normalized);
+            Quaternion.LookRotation(
+                directionToTarget.normalized);
 
-        // Smoothly rotates the enemy toward the target.
-        transform.rotation = Quaternion.Slerp(
-            transform.rotation,
-            targetRotation,
-            rotationSpeed * Time.deltaTime);
+        transform.rotation =
+            Quaternion.Slerp(
+                transform.rotation,
+                targetRotation,
+                rotationSpeed * Time.deltaTime);
     }
 
     #endregion
