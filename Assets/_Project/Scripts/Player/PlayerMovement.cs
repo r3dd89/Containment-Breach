@@ -1,36 +1,37 @@
 using UnityEngine;
-
-// This namespace gives us access to Unity's newer Input System.
-// We use it to read keyboard input such as W, A, S, D, Shift, Space, and Ctrl.
 using UnityEngine.InputSystem;
 
 /*
  * Script Name: PlayerMovement
  * Purpose:
- * Controls the basic first-person player movement.
+ * Controls first-person player movement.
  *
- * This script currently handles:
- * - Walking with W, A, S, and D
- * - Sprinting while holding Left Shift
- * - Jumping with Space
- * - Crouching while holding Left Ctrl
- * - Preventing the player from standing when something is above them
- * - Gravity so the player stays on the ground
+ * Supported input:
+ * - Keyboard movement with W, A, S, and D
+ * - Controller movement with the left stick
+ * - Keyboard sprint with Left Shift
+ * - Controller sprint with the left stick button
+ * - Keyboard jump with Space
+ * - Controller jump with the south face button
+ * - Keyboard crouch with Left Ctrl
+ * - Controller crouch with the east face button
  *
- * This script uses Unity's CharacterController component
- * instead of a Rigidbody for player movement.
+ * Current movement behavior:
+ * - Walking
+ * - Sprinting
+ * - Jumping
+ * - Crouching
+ * - Preventing standing beneath low ceilings
+ * - Gravity
+ *
+ * TODO:
+ * - Move input bindings to Input Actions for rebinding support.
+ * - Add configurable controller control schemes.
  */
 
 public class PlayerMovement : MonoBehaviour
 {
     #region Component References
-
-    /*
-     * REGION: Component References
-     *
-     * This region stores references to Unity components
-     * that this script needs in order to work.
-     */
 
     [Header("Component References")]
 
@@ -43,13 +44,6 @@ public class PlayerMovement : MonoBehaviour
 
     #region Movement Settings
 
-    /*
-     * REGION: Movement Settings
-     *
-     * This region contains values that control
-     * walking and sprinting.
-     */
-
     [Header("Movement Settings")]
 
     [SerializeField]
@@ -57,20 +51,13 @@ public class PlayerMovement : MonoBehaviour
     private float walkSpeed = 5f;
 
     [SerializeField]
-    [Tooltip("How fast the player moves while holding Left Shift.")]
+    [Tooltip("How fast the player moves while sprinting.")]
     private float sprintSpeed = 8f;
 
     #endregion
 
 
     #region Jump Settings
-
-    /*
-     * REGION: Jump Settings
-     *
-     * This region contains the value that controls
-     * how high the player can jump.
-     */
 
     [Header("Jump Settings")]
 
@@ -82,13 +69,6 @@ public class PlayerMovement : MonoBehaviour
 
 
     #region Crouch Settings
-
-    /*
-     * REGION: Crouch Settings
-     *
-     * This region contains values that control
-     * crouching and crouched movement.
-     */
 
     [Header("Crouch Settings")]
 
@@ -109,21 +89,6 @@ public class PlayerMovement : MonoBehaviour
 
     #region Headroom Settings
 
-    /*
-     * REGION: Headroom Settings
-     *
-     * This region controls how the player checks
-     * whether there is enough room to stand.
-     *
-     * For example:
-     * - Under a low ceiling
-     * - Under a pipe
-     * - Inside a vent
-     *
-     * If there is not enough space,
-     * the player remains crouched.
-     */
-
     [Header("Headroom Settings")]
 
     [SerializeField]
@@ -139,13 +104,6 @@ public class PlayerMovement : MonoBehaviour
 
     #region Gravity Settings
 
-    /*
-     * REGION: Gravity Settings
-     *
-     * CharacterController does not automatically use gravity.
-     * Because of that, gravity must be calculated manually.
-     */
-
     [Header("Gravity Settings")]
 
     [SerializeField]
@@ -159,19 +117,9 @@ public class PlayerMovement : MonoBehaviour
     #endregion
 
 
-    #region Private Variables
-
-    /*
-     * REGION: Private Variables
-     *
-     * These variables are used internally while the game runs.
-     * They do not need to be changed in the Inspector.
-     */
+    #region Runtime Variables
 
     // Stores the player's current vertical speed.
-    //
-    // Positive = moving upward.
-    // Negative = moving downward.
     private float verticalVelocity;
 
     // Stores the CharacterController's original standing height.
@@ -186,67 +134,65 @@ public class PlayerMovement : MonoBehaviour
     #endregion
 
 
-    #region Unity Methods
+    #region Public Properties
 
     /*
-     * REGION: Unity Methods
+     * Exposes the actual crouch state to other systems.
      *
-     * Unity automatically calls these methods.
-     *
-     * Awake runs when the object is first loaded.
-     * Update runs once every frame.
+     * CameraController can use this value instead of independently
+     * checking keyboard or controller input.
      */
+    public bool IsCrouching
+    {
+        get { return isCrouching; }
+    }
+
+    #endregion
+
+
+    #region Unity Methods
 
     private void Awake()
     {
-        // Check whether the CharacterController
-        // was manually assigned in the Inspector.
+        // Automatically finds the CharacterController if no reference
+        // was assigned manually in the Inspector.
         if (characterController == null)
         {
-            // If it was not assigned,
-            // automatically find it on this GameObject.
             characterController = GetComponent<CharacterController>();
         }
 
-        // Save the CharacterController's normal standing height.
-        //
-        // We need this so the player knows what size
-        // to return to after crouching.
+        // Store the normal standing dimensions.
         standingHeight = characterController.height;
-
-        // Save the CharacterController's normal center position.
         standingCenter = characterController.center;
     }
 
 
     private void Update()
     {
-        // 1. Check whether the player pressed Jump.
+        // Process jump input.
         HandleJump();
 
-        // 2. Handle crouching and standing.
+        // Process crouching and standing.
         HandleCrouch();
 
-        // 3. Apply gravity.
+        // Apply gravity.
         HandleGravity();
 
-        // 4. Calculate horizontal movement.
+        // Calculate horizontal movement from all supported input devices.
         Vector3 horizontalMove = CalculateMovement();
 
-        // 5. Combine horizontal movement
-        // with vertical movement.
+        // Combine horizontal and vertical movement.
         Vector3 finalMovement =
             horizontalMove +
             (Vector3.up * verticalVelocity);
 
-        // 6. Move the CharacterController.
-        //
-        // We use ONE Move() call per frame because
-        // multiple CharacterController.Move() calls
-        // can interfere with isGrounded.
+        /*
+         * CharacterController.Move is called only once per frame.
+         *
+         * Multiple Move calls can interfere with CharacterController.isGrounded.
+         */
         characterController.Move(
-            finalMovement * Time.deltaTime
-        );
+            finalMovement * Time.deltaTime);
     }
 
     #endregion
@@ -254,76 +200,85 @@ public class PlayerMovement : MonoBehaviour
 
     #region Movement Methods
 
-    /*
-     * REGION: Movement Methods
-     *
-     * This region reads WASD input and calculates
-     * the player's horizontal movement.
-     */
-
     private Vector3 CalculateMovement()
     {
-        // Start with no movement input.
+        // Stores the final two-dimensional movement input.
         Vector2 movementInput = Vector2.zero;
 
-        // Make sure Unity can detect a keyboard.
+        #region Keyboard Movement
+
         if (Keyboard.current != null)
         {
-            // W moves forward.
+            // Forward.
             if (Keyboard.current.wKey.isPressed)
             {
                 movementInput.y += 1f;
             }
 
-            // S moves backward.
+            // Backward.
             if (Keyboard.current.sKey.isPressed)
             {
                 movementInput.y -= 1f;
             }
 
-            // D moves right.
+            // Right.
             if (Keyboard.current.dKey.isPressed)
             {
                 movementInput.x += 1f;
             }
 
-            // A moves left.
+            // Left.
             if (Keyboard.current.aKey.isPressed)
             {
                 movementInput.x -= 1f;
             }
         }
 
-        // Normalize the input.
-        //
-        // Without this, holding two movement keys
-        // such as W + D would make diagonal movement faster.
-        movementInput = movementInput.normalized;
+        #endregion
 
-        // Convert the 2D keyboard input
-        // into a 3D movement direction.
-        //
-        // transform.right = player's right direction.
-        // transform.forward = player's forward direction.
+
+        #region Gamepad Movement
+
+        if (Gamepad.current != null)
+        {
+            // Reads analog movement from the controller's left stick.
+            Vector2 gamepadMovement =
+                Gamepad.current.leftStick.ReadValue();
+
+            // Adds controller input to the movement input.
+            movementInput += gamepadMovement;
+        }
+
+        #endregion
+
+
+        /*
+         * Clamp instead of normalizing.
+         *
+         * This preserves analog stick strength when the stick is only
+         * partially tilted while still preventing diagonal movement
+         * from exceeding full movement speed.
+         */
+        movementInput =
+            Vector2.ClampMagnitude(
+                movementInput,
+                1f);
+
+        // Convert 2D input into movement relative to the player's orientation.
         Vector3 moveDirection =
             transform.right * movementInput.x +
             transform.forward * movementInput.y;
 
-        // Start with normal walking speed.
+        // Walking is the default movement speed.
         float currentSpeed = walkSpeed;
 
         // Crouching takes priority over sprinting.
-        //
-        // This prevents the player from sprinting
-        // while crouched.
         if (isCrouching)
         {
             currentSpeed = crouchSpeed;
         }
-        else if (Keyboard.current != null &&
-                 Keyboard.current.leftShiftKey.isPressed)
+        else if (IsSprintHeld())
         {
-            // Use sprint speed while Left Shift is held.
             currentSpeed = sprintSpeed;
         }
 
@@ -331,46 +286,78 @@ public class PlayerMovement : MonoBehaviour
         return moveDirection * currentSpeed;
     }
 
+
+    private bool IsSprintHeld()
+    {
+        bool keyboardSprint = false;
+        bool gamepadSprint = false;
+
+        // Left Shift provides keyboard sprint.
+        if (Keyboard.current != null)
+        {
+            keyboardSprint =
+                Keyboard.current.leftShiftKey.isPressed;
+        }
+
+        // Clicking and holding the left stick provides controller sprint.
+        if (Gamepad.current != null)
+        {
+            gamepadSprint =
+                Gamepad.current.leftStickButton.isPressed;
+        }
+
+        return keyboardSprint || gamepadSprint;
+    }
+
     #endregion
 
 
     #region Jump Methods
 
-    /*
-     * REGION: Jump Methods
-     *
-     * This region handles the player's jump input
-     * and calculates the required upward velocity.
-     */
-
     private void HandleJump()
     {
-        // Stop if Unity cannot detect a keyboard.
-        if (Keyboard.current == null)
+        bool jumpPressed = false;
+
+        // Space provides keyboard jump input.
+        if (Keyboard.current != null &&
+            Keyboard.current.spaceKey.wasPressedThisFrame)
+        {
+            jumpPressed = true;
+        }
+
+        /*
+         * buttonSouth represents the lower face button:
+         *
+         * Xbox = A
+         * PlayStation = Cross
+         */
+        if (Gamepad.current != null &&
+            Gamepad.current.buttonSouth.wasPressedThisFrame)
+        {
+            jumpPressed = true;
+        }
+
+        // Stop if neither input device requested a jump.
+        if (!jumpPressed)
         {
             return;
         }
 
-        // Check whether Space was pressed during this frame.
-        if (Keyboard.current.spaceKey.wasPressedThisFrame)
+        // Jumping is only allowed while grounded.
+        if (!characterController.isGrounded)
         {
-            // Only allow the player to jump while grounded.
-            if (characterController.isGrounded)
-            {
-                /*
-                 * Calculate the upward velocity needed
-                 * to reach the desired jump height.
-                 *
-                 * Formula:
-                 *
-                 * velocity = sqrt(height * -2 * gravity)
-                 */
-
-                verticalVelocity = Mathf.Sqrt(
-                    jumpHeight * -2f * gravity
-                );
-            }
+            return;
         }
+
+        /*
+         * Calculate the upward velocity required to reach
+         * the configured jump height.
+         *
+         * velocity = sqrt(height * -2 * gravity)
+         */
+        verticalVelocity =
+            Mathf.Sqrt(
+                jumpHeight * -2f * gravity);
     }
 
     #endregion
@@ -378,34 +365,30 @@ public class PlayerMovement : MonoBehaviour
 
     #region Crouch Methods
 
-    /*
-     * REGION: Crouch Methods
-     *
-     * This region handles:
-     *
-     * - Crouching
-     * - Standing
-     * - Changing CharacterController height
-     * - Preventing the player from standing
-     *   when something is above them
-     */
-
     private void HandleCrouch()
     {
-        // Stop if Unity cannot detect a keyboard.
-        if (Keyboard.current == null)
+        bool crouchButtonHeld = false;
+
+        // Left Ctrl provides keyboard crouch input.
+        if (Keyboard.current != null &&
+            Keyboard.current.leftCtrlKey.isPressed)
         {
-            return;
+            crouchButtonHeld = true;
         }
 
-        // Check whether Left Ctrl is currently being held.
-        bool crouchButtonHeld =
-            Keyboard.current.leftCtrlKey.isPressed;
-
         /*
-         * If Ctrl is held,
-         * the player should crouch.
+         * buttonEast represents the right face button:
+         *
+         * Xbox = B
+         * PlayStation = Circle
          */
+        if (Gamepad.current != null &&
+            Gamepad.current.buttonEast.isPressed)
+        {
+            crouchButtonHeld = true;
+        }
+
+        // Holding either crouch input requests the crouched state.
         if (crouchButtonHeld)
         {
             isCrouching = true;
@@ -413,173 +396,106 @@ public class PlayerMovement : MonoBehaviour
         else
         {
             /*
-             * If Ctrl is released,
-             * the player is trying to stand.
-             *
-             * Before allowing that,
-             * check whether enough space exists above them.
+             * Standing is only allowed if sufficient space
+             * exists above the CharacterController.
              */
-
             if (CanStandUp())
             {
-                // Nothing is blocking the player.
-                // Allow standing.
                 isCrouching = false;
             }
             else
             {
-                // Something is above the player.
-                // Keep the player crouched.
                 isCrouching = true;
             }
         }
 
-        // Decide which height the CharacterController
-        // should move toward.
-        float targetHeight;
+        // Select the appropriate CharacterController height.
+        float targetHeight =
+            isCrouching
+                ? crouchHeight
+                : standingHeight;
 
-        if (isCrouching)
-        {
-            // Use the shorter crouching height.
-            targetHeight = crouchHeight;
-        }
-        else
-        {
-            // Return to full standing height.
-            targetHeight = standingHeight;
-        }
+        // Smoothly transition between standing and crouching height.
+        characterController.height =
+            Mathf.Lerp(
+                characterController.height,
+                targetHeight,
+                crouchTransitionSpeed * Time.deltaTime);
 
-        /*
-         * Smoothly transition the controller height.
-         *
-         * Lerp prevents the CharacterController
-         * from instantly snapping between heights.
-         */
-        characterController.height = Mathf.Lerp(
-            characterController.height,
-            targetHeight,
-            crouchTransitionSpeed * Time.deltaTime
-        );
-
-        // Start with the normal standing center.
+        // Start from the original standing center.
         Vector3 targetCenter = standingCenter;
 
-        /*
-         * Calculate how much shorter the controller
-         * currently is compared with standing height.
-         */
+        // Calculate how much shorter the controller currently is.
         float heightDifference =
-            standingHeight - characterController.height;
+            standingHeight -
+            characterController.height;
 
         /*
-         * Move the CharacterController's center downward
-         * by half of the height difference.
+         * Move the center downward by half the height difference.
          *
-         * This keeps the bottom of the collider
-         * close to the ground while crouching.
+         * This keeps the bottom of the CharacterController near
+         * the floor as its height changes.
          */
         targetCenter.y =
-            standingCenter.y - (heightDifference / 2f);
+            standingCenter.y -
+            (heightDifference / 2f);
 
-        // Apply the new center position.
-        characterController.center = targetCenter;
+        // Apply the adjusted center.
+        characterController.center =
+            targetCenter;
     }
 
 
     private bool CanStandUp()
     {
-        /*
-         * METHOD: CanStandUp
-         *
-         * Checks the space above the player's head.
-         *
-         * Returns:
-         *
-         * true  = enough room exists to stand.
-         * false = something is blocking the player.
-         */
-
-        // Calculate how much additional height
-        // the controller needs in order to stand.
+        // Calculate the extra vertical space required to stand.
         float extraHeightNeeded =
-            standingHeight - characterController.height;
+            standingHeight -
+            characterController.height;
 
-        /*
-         * If the controller is already almost
-         * completely standing, there is no reason
-         * to run an overhead physics check.
-         */
+        // No physics check is needed if already effectively standing.
         if (extraHeightNeeded <= 0.01f)
         {
             return true;
         }
 
-        /*
-         * Find the center of the CharacterController
-         * in world space.
-         */
+        // Find the CharacterController center in world space.
         Vector3 controllerCenter =
             transform.TransformPoint(
-                characterController.center
-            );
+                characterController.center);
 
-        /*
-         * Find the current top of the CharacterController.
-         *
-         * Half of the controller's height extends
-         * above its center.
-         */
+        // Find the current top of the CharacterController.
         float currentTop =
             controllerCenter.y +
             (characterController.height / 2f);
 
-        /*
-         * This is the starting point for
-         * the overhead collision check.
-         */
-        Vector3 checkStart = new Vector3(
-            controllerCenter.x,
-            currentTop,
-            controllerCenter.z
-        );
+        // Begin the overhead check from the current top.
+        Vector3 checkStart =
+            new Vector3(
+                controllerCenter.x,
+                currentTop,
+                controllerCenter.z);
 
-        /*
-         * Use a sphere slightly smaller
-         * than the CharacterController radius.
-         *
-         * The padding prevents the check
-         * from being overly sensitive around edges.
-         */
+        // Use a slightly smaller radius to avoid edge sensitivity.
         float checkRadius =
             Mathf.Max(
                 0.01f,
-                characterController.radius - headroomCheckPadding
-            );
+                characterController.radius -
+                headroomCheckPadding);
 
-        /*
-         * Cast the sphere upward through the space
-         * the player's head and upper body would occupy
-         * while returning to standing height.
-         */
-        bool blocked = Physics.SphereCast(
-            checkStart,
-            checkRadius,
-            Vector3.up,
-            out RaycastHit hit,
-            extraHeightNeeded + headroomCheckPadding,
-            headroomLayerMask,
-            QueryTriggerInteraction.Ignore
-        );
+        // Check the additional space needed for the player to stand.
+        bool blocked =
+            Physics.SphereCast(
+                checkStart,
+                checkRadius,
+                Vector3.up,
+                out RaycastHit hit,
+                extraHeightNeeded +
+                headroomCheckPadding,
+                headroomLayerMask,
+                QueryTriggerInteraction.Ignore);
 
-        /*
-         * If the SphereCast hit something,
-         * blocked will be true.
-         *
-         * We return the opposite:
-         *
-         * blocked = true  -> CanStandUp = false
-         * blocked = false -> CanStandUp = true
-         */
+        // Standing is safe only when nothing blocks the required space.
         return !blocked;
     }
 
@@ -588,37 +504,20 @@ public class PlayerMovement : MonoBehaviour
 
     #region Gravity Methods
 
-    /*
-     * REGION: Gravity Methods
-     *
-     * This region applies gravity to the player
-     * while they are airborne.
-     */
-
     private void HandleGravity()
     {
-        // Check whether the CharacterController
-        // is currently touching the ground.
+        // Maintain slight downward pressure while grounded.
         if (characterController.isGrounded)
         {
-            /*
-             * If the player is grounded
-             * and still has downward velocity,
-             * replace it with a small downward force.
-             */
             if (verticalVelocity < 0f)
             {
-                // This helps keep the player
-                // firmly touching the ground.
-                verticalVelocity = groundedForce;
+                verticalVelocity =
+                    groundedForce;
             }
         }
         else
         {
-            /*
-             * If the player is airborne,
-             * continuously add gravity.
-             */
+            // Apply gravity continuously while airborne.
             verticalVelocity +=
                 gravity * Time.deltaTime;
         }

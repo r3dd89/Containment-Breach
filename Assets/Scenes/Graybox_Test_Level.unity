@@ -1212,6 +1212,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 1352207349456028339, guid: 302f315bde8348142a77ddb4752c733d, type: 3}
+      propertyPath: playerMovement
+      value: 
+      objectReference: {fileID: 2077078444}
     - target: {fileID: 1442378626532778688, guid: 302f315bde8348142a77ddb4752c733d, type: 3}
       propertyPath: m_Name
       value: Player
@@ -2237,6 +2241,17 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 985977495}
   m_SourcePrefab: {fileID: 100100000, guid: c60acae7824c4a0489ba4a3dc114d676, type: 3}
+--- !u!114 &2077078444 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 2782474398541409038, guid: 302f315bde8348142a77ddb4752c733d, type: 3}
+  m_PrefabInstance: {fileID: 1313161034}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 84250b84d11279e4298e026ff5803f95, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerMovement
 --- !u!1 &2122326626
 GameObject:
   m_ObjectHideFlags: 0

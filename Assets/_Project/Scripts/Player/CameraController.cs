@@ -9,6 +9,7 @@ using UnityEngine.InputSystem;
  * Supported input:
  * - Mouse look
  * - Keyboard-only look using the arrow keys
+ * - Controller look using the right stick
  *
  * Current camera behavior:
  * - Looking left and right
@@ -20,8 +21,8 @@ using UnityEngine.InputSystem;
  * - Raising the camera when the player stands again
  *
  * TODO:
- * - Add controller/gamepad look support.
- * - Move camera and player input to Input Actions for remapping.
+ * - Move camera and player input to Input Actions for rebinding support.
+ * - Add configurable controller sensitivity options.
  */
 
 public class CameraController : MonoBehaviour
@@ -33,6 +34,10 @@ public class CameraController : MonoBehaviour
     [SerializeField]
     [Tooltip("The Player object that rotates left and right with the camera.")]
     private Transform playerBody;
+
+    [SerializeField]
+    [Tooltip("Provides the player's actual crouch state so the camera stays synchronized with movement.")]
+    private PlayerMovement playerMovement;
 
     #endregion
 
@@ -55,6 +60,22 @@ public class CameraController : MonoBehaviour
     [SerializeField]
     [Tooltip("Controls how quickly the camera rotates when the arrow keys are used.")]
     private float keyboardLookSpeed = 120f;
+
+    #endregion
+
+
+    #region Controller Look Settings
+
+    [Header("Controller Look Settings")]
+
+    [SerializeField]
+    [Tooltip("Controls how quickly the camera rotates when the controller right stick is used.")]
+    private float controllerLookSpeed = 150f;
+
+    [SerializeField]
+    [Tooltip("Ignores very small right-stick movement to reduce controller stick drift.")]
+    [Range(0f, 1f)]
+    private float controllerLookDeadzone = 0.15f;
 
     #endregion
 
@@ -110,6 +131,19 @@ public class CameraController : MonoBehaviour
 
     #region Unity Methods
 
+    private void Awake()
+    {
+        // Automatically finds PlayerMovement on the Player object
+        // if it was not assigned manually in the Inspector.
+        if (playerMovement == null &&
+            playerBody != null)
+        {
+            playerMovement =
+                playerBody.GetComponent<PlayerMovement>();
+        }
+    }
+
+
     private void Start()
     {
         // Lock and hide the mouse cursor when gameplay begins.
@@ -120,18 +154,25 @@ public class CameraController : MonoBehaviour
         }
 
         // Ensure the camera begins at the configured standing height.
-        Vector3 startingPosition = transform.localPosition;
-        startingPosition.y = standingCameraHeight;
-        transform.localPosition = startingPosition;
+        Vector3 startingPosition =
+            transform.localPosition;
+
+        startingPosition.y =
+            standingCameraHeight;
+
+        transform.localPosition =
+            startingPosition;
     }
 
 
     private void Update()
     {
-        // Mouse input and keyboard input both contribute to camera rotation.
+        // Mouse, keyboard, and controller input all contribute
+        // to camera rotation.
         HandleLookInput();
 
-        // Updates the camera height while crouching or standing.
+        // Keeps camera height synchronized with the player's
+        // actual crouch state.
         HandleCrouchCamera();
     }
 
@@ -142,27 +183,36 @@ public class CameraController : MonoBehaviour
 
     private void HandleLookInput()
     {
-        // These values represent the final horizontal and vertical
-        // look input for the current frame.
+        // Stores the final horizontal and vertical look input
+        // for the current frame.
         float horizontalLook = 0f;
         float verticalLook = 0f;
+
+        #region Mouse Look
 
         // Read mouse movement if a mouse is connected.
         if (Mouse.current != null)
         {
-            Vector2 mouseDelta = Mouse.current.delta.ReadValue();
+            Vector2 mouseDelta =
+                Mouse.current.delta.ReadValue();
 
             horizontalLook +=
-                mouseDelta.x * mouseSensitivity;
+                mouseDelta.x *
+                mouseSensitivity;
 
             verticalLook +=
-                mouseDelta.y * mouseSensitivity;
+                mouseDelta.y *
+                mouseSensitivity;
         }
 
-        // Read keyboard-only camera controls if a keyboard is connected.
+        #endregion
+
+
+        #region Keyboard Look
+
+        // Read arrow-key camera controls if a keyboard is connected.
         if (Keyboard.current != null)
         {
-            // Arrow keys create a digital look direction.
             float keyboardHorizontal = 0f;
             float keyboardVertical = 0f;
 
@@ -186,7 +236,8 @@ public class CameraController : MonoBehaviour
                 keyboardVertical -= 1f;
             }
 
-            // Time.deltaTime makes keyboard rotation frame-rate independent.
+            // Time.deltaTime keeps digital keyboard look
+            // frame-rate independent.
             horizontalLook +=
                 keyboardHorizontal *
                 keyboardLookSpeed *
@@ -198,7 +249,47 @@ public class CameraController : MonoBehaviour
                 Time.deltaTime;
         }
 
-        // Apply the combined look values.
+        #endregion
+
+
+        #region Controller Look
+
+        // Read right-stick look input if a controller is connected.
+        if (Gamepad.current != null)
+        {
+            Vector2 controllerLook =
+                Gamepad.current.rightStick.ReadValue();
+
+            /*
+             * Ignore tiny stick movement.
+             *
+             * This helps prevent camera drift from controllers
+             * whose sticks do not rest perfectly at zero.
+             */
+            if (controllerLook.magnitude <
+                controllerLookDeadzone)
+            {
+                controllerLook =
+                    Vector2.zero;
+            }
+
+            // Controller stick values represent direction rather than
+            // pixel movement, so Time.deltaTime is required.
+            horizontalLook +=
+                controllerLook.x *
+                controllerLookSpeed *
+                Time.deltaTime;
+
+            verticalLook +=
+                controllerLook.y *
+                controllerLookSpeed *
+                Time.deltaTime;
+        }
+
+        #endregion
+
+
+        // Apply all supported look input through one shared method.
         ApplyLookRotation(
             horizontalLook,
             verticalLook);
@@ -210,13 +301,15 @@ public class CameraController : MonoBehaviour
         float verticalLook)
     {
         // Positive vertical input should look upward.
-        verticalRotation -= verticalLook;
+        verticalRotation -=
+            verticalLook;
 
-        // Prevent the camera from rotating too far upward or downward.
-        verticalRotation = Mathf.Clamp(
-            verticalRotation,
-            -verticalLookLimit,
-            verticalLookLimit);
+        // Prevent the camera from rotating too far up or down.
+        verticalRotation =
+            Mathf.Clamp(
+                verticalRotation,
+                -verticalLookLimit,
+                verticalLookLimit);
 
         // Apply vertical rotation to the camera only.
         transform.localRotation =
@@ -225,11 +318,12 @@ public class CameraController : MonoBehaviour
                 0f,
                 0f);
 
-        // Apply horizontal rotation to the entire player body.
+        // Apply horizontal rotation to the entire Player object.
         if (playerBody != null)
         {
             playerBody.Rotate(
-                Vector3.up * horizontalLook);
+                Vector3.up *
+                horizontalLook);
         }
     }
 
@@ -240,24 +334,28 @@ public class CameraController : MonoBehaviour
 
     private void HandleCrouchCamera()
     {
-        // Stop if no keyboard is available.
-        if (Keyboard.current == null)
-        {
-            return;
-        }
-
         // Default to standing height.
         float targetHeight =
             standingCameraHeight;
 
-        // Left Ctrl lowers the camera into crouch position.
-        if (Keyboard.current.leftCtrlKey.isPressed)
+        /*
+         * Use the actual crouch state from PlayerMovement.
+         *
+         * This keeps the camera synchronized with both:
+         * - Left Ctrl keyboard crouch
+         * - Controller crouch input
+         *
+         * It also respects the headroom system that can force
+         * the player to remain crouched under an obstruction.
+         */
+        if (playerMovement != null &&
+            playerMovement.IsCrouching)
         {
             targetHeight =
                 crouchingCameraHeight;
         }
 
-        // Get the current camera position.
+        // Get the camera's current local position.
         Vector3 currentPosition =
             transform.localPosition;
 
