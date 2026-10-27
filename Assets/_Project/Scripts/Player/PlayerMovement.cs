@@ -4,17 +4,9 @@ using UnityEngine.InputSystem;
 /*
  * Script Name: PlayerMovement
  * Purpose:
- * Controls first-person player movement.
+ * Controls first-person player movement using the PlayerInputActions asset.
  *
- * Supported input:
- * - Keyboard movement with W, A, S, and D
- * - Controller movement with the left stick
- * - Keyboard sprint with Left Shift
- * - Controller sprint with the left stick button
- * - Keyboard jump with Space
- * - Controller jump with the south face button
- * - Keyboard crouch with Left Ctrl
- * - Controller crouch with the east face button
+ * Supported input is defined in PlayerInputActions.inputactions.
  *
  * Current movement behavior:
  * - Walking
@@ -24,8 +16,14 @@ using UnityEngine.InputSystem;
  * - Preventing standing beneath low ceilings
  * - Gravity
  *
+ * Input Actions currently used:
+ * - Move
+ * - Jump
+ * - Sprint
+ * - Crouch
+ *
  * TODO:
- * - Move input bindings to Input Actions for rebinding support.
+ * - Add runtime input rebinding support.
  * - Add configurable controller control schemes.
  */
 
@@ -117,6 +115,22 @@ public class PlayerMovement : MonoBehaviour
     #endregion
 
 
+    #region Input
+
+    /*
+     * PlayerInputActions is generated automatically from:
+     *
+     * Assets/_Project/Input/PlayerInputActions.inputactions
+     *
+     * The generated class provides strongly typed access to the
+     * Player action map and its individual actions.
+     */
+
+    private PlayerInputActions playerInputActions;
+
+    #endregion
+
+
     #region Runtime Variables
 
     // Stores the player's current vertical speed.
@@ -137,10 +151,9 @@ public class PlayerMovement : MonoBehaviour
     #region Public Properties
 
     /*
-     * Exposes the actual crouch state to other systems.
+     * Exposes the actual crouch state to systems such as CameraController.
      *
-     * CameraController can use this value instead of independently
-     * checking keyboard or controller input.
+     * This prevents the camera from independently interpreting crouch input.
      */
     public bool IsCrouching
     {
@@ -154,16 +167,54 @@ public class PlayerMovement : MonoBehaviour
 
     private void Awake()
     {
-        // Automatically finds the CharacterController if no reference
-        // was assigned manually in the Inspector.
+        // Automatically finds the CharacterController if the Inspector
+        // reference was not assigned.
         if (characterController == null)
         {
             characterController = GetComponent<CharacterController>();
         }
 
-        // Store the normal standing dimensions.
+        // Store the CharacterController's normal standing dimensions.
         standingHeight = characterController.height;
         standingCenter = characterController.center;
+
+        // Create an instance of the generated Input Actions class.
+        playerInputActions = new PlayerInputActions();
+    }
+
+
+    private void OnEnable()
+    {
+        /*
+         * Input Actions must be enabled before they can receive input.
+         *
+         * Enabling the Player action map here also means input automatically
+         * stops if this component becomes disabled.
+         */
+        if (playerInputActions != null)
+        {
+            playerInputActions.Player.Enable();
+        }
+    }
+
+
+    private void OnDisable()
+    {
+        // Disable input when this component is disabled.
+        if (playerInputActions != null)
+        {
+            playerInputActions.Player.Disable();
+        }
+    }
+
+
+    private void OnDestroy()
+    {
+        // Releases resources owned by the generated Input Actions instance.
+        if (playerInputActions != null)
+        {
+            playerInputActions.Dispose();
+        }
     }
 
 
@@ -178,8 +229,9 @@ public class PlayerMovement : MonoBehaviour
         // Apply gravity.
         HandleGravity();
 
-        // Calculate horizontal movement from all supported input devices.
-        Vector3 horizontalMove = CalculateMovement();
+        // Calculate horizontal movement from the Move action.
+        Vector3 horizontalMove =
+            CalculateMovement();
 
         // Combine horizontal and vertical movement.
         Vector3 finalMovement =
@@ -202,84 +254,55 @@ public class PlayerMovement : MonoBehaviour
 
     private Vector3 CalculateMovement()
     {
-        // Stores the final two-dimensional movement input.
-        Vector2 movementInput = Vector2.zero;
-
-        #region Keyboard Movement
-
-        if (Keyboard.current != null)
-        {
-            // Forward.
-            if (Keyboard.current.wKey.isPressed)
-            {
-                movementInput.y += 1f;
-            }
-
-            // Backward.
-            if (Keyboard.current.sKey.isPressed)
-            {
-                movementInput.y -= 1f;
-            }
-
-            // Right.
-            if (Keyboard.current.dKey.isPressed)
-            {
-                movementInput.x += 1f;
-            }
-
-            // Left.
-            if (Keyboard.current.aKey.isPressed)
-            {
-                movementInput.x -= 1f;
-            }
-        }
-
-        #endregion
-
-
-        #region Gamepad Movement
-
-        if (Gamepad.current != null)
-        {
-            // Reads analog movement from the controller's left stick.
-            Vector2 gamepadMovement =
-                Gamepad.current.leftStick.ReadValue();
-
-            // Adds controller input to the movement input.
-            movementInput += gamepadMovement;
-        }
-
-        #endregion
-
+        /*
+         * Read the Move action as a Vector2.
+         *
+         * The Input Actions asset decides which physical controls feed
+         * this value:
+         *
+         * Keyboard:
+         * - W
+         * - A
+         * - S
+         * - D
+         *
+         * Gamepad:
+         * - Left Stick
+         */
+        Vector2 movementInput =
+            playerInputActions.Player.Move.ReadValue<Vector2>();
 
         /*
-         * Clamp instead of normalizing.
+         * Clamp the input instead of normalizing it.
          *
-         * This preserves analog stick strength when the stick is only
-         * partially tilted while still preventing diagonal movement
-         * from exceeding full movement speed.
+         * This prevents diagonal keyboard movement from being faster while
+         * preserving partial analog-stick movement on a controller.
          */
         movementInput =
             Vector2.ClampMagnitude(
                 movementInput,
                 1f);
 
-        // Convert 2D input into movement relative to the player's orientation.
+        // Convert the two-dimensional input into world movement
+        // relative to the Player object's orientation.
         Vector3 moveDirection =
             transform.right * movementInput.x +
             transform.forward * movementInput.y;
 
-        // Walking is the default movement speed.
-        float currentSpeed = walkSpeed;
+        // Walking is the default speed.
+        float currentSpeed =
+            walkSpeed;
 
         // Crouching takes priority over sprinting.
         if (isCrouching)
         {
-            currentSpeed = crouchSpeed;
+            currentSpeed =
+                crouchSpeed;
         }
         else if (IsSprintHeld())
         {
-            currentSpeed = sprintSpeed;
+            currentSpeed =
+                sprintSpeed;
         }
 
         // Return the final horizontal movement velocity.
@@ -289,24 +312,19 @@ public class PlayerMovement : MonoBehaviour
 
     private bool IsSprintHeld()
     {
-        bool keyboardSprint = false;
-        bool gamepadSprint = false;
-
-        // Left Shift provides keyboard sprint.
-        if (Keyboard.current != null)
-        {
-            keyboardSprint =
-                Keyboard.current.leftShiftKey.isPressed;
-        }
-
-        // Clicking and holding the left stick provides controller sprint.
-        if (Gamepad.current != null)
-        {
-            gamepadSprint =
-                Gamepad.current.leftStickButton.isPressed;
-        }
-
-        return keyboardSprint || gamepadSprint;
+        /*
+         * The Sprint action currently receives input from:
+         *
+         * Keyboard:
+         * - Left Shift
+         *
+         * Gamepad:
+         * - Left Stick Press
+         *
+         * IsPressed() works for either binding without the movement
+         * script needing to know which device generated the input.
+         */
+        return playerInputActions.Player.Sprint.IsPressed();
     }
 
     #endregion
@@ -316,29 +334,15 @@ public class PlayerMovement : MonoBehaviour
 
     private void HandleJump()
     {
-        bool jumpPressed = false;
-
-        // Space provides keyboard jump input.
-        if (Keyboard.current != null &&
-            Keyboard.current.spaceKey.wasPressedThisFrame)
-        {
-            jumpPressed = true;
-        }
-
         /*
-         * buttonSouth represents the lower face button:
+         * WasPressedThisFrame() becomes true only on the frame
+         * the Jump action is initially pressed.
          *
-         * Xbox = A
-         * PlayStation = Cross
+         * Current bindings:
+         * - Space
+         * - Gamepad Button South
          */
-        if (Gamepad.current != null &&
-            Gamepad.current.buttonSouth.wasPressedThisFrame)
-        {
-            jumpPressed = true;
-        }
-
-        // Stop if neither input device requested a jump.
-        if (!jumpPressed)
+        if (!playerInputActions.Player.Jump.WasPressedThisFrame())
         {
             return;
         }
@@ -352,6 +356,8 @@ public class PlayerMovement : MonoBehaviour
         /*
          * Calculate the upward velocity required to reach
          * the configured jump height.
+         *
+         * Formula:
          *
          * velocity = sqrt(height * -2 * gravity)
          */
@@ -367,28 +373,17 @@ public class PlayerMovement : MonoBehaviour
 
     private void HandleCrouch()
     {
-        bool crouchButtonHeld = false;
-
-        // Left Ctrl provides keyboard crouch input.
-        if (Keyboard.current != null &&
-            Keyboard.current.leftCtrlKey.isPressed)
-        {
-            crouchButtonHeld = true;
-        }
-
         /*
-         * buttonEast represents the right face button:
+         * Read the Crouch action instead of checking physical devices.
          *
-         * Xbox = B
-         * PlayStation = Circle
+         * Current bindings:
+         * - Left Ctrl
+         * - Gamepad Button East
          */
-        if (Gamepad.current != null &&
-            Gamepad.current.buttonEast.isPressed)
-        {
-            crouchButtonHeld = true;
-        }
+        bool crouchButtonHeld =
+            playerInputActions.Player.Crouch.IsPressed();
 
-        // Holding either crouch input requests the crouched state.
+        // Holding the crouch action requests the crouched state.
         if (crouchButtonHeld)
         {
             isCrouching = true;
@@ -396,8 +391,8 @@ public class PlayerMovement : MonoBehaviour
         else
         {
             /*
-             * Standing is only allowed if sufficient space
-             * exists above the CharacterController.
+             * When crouch is released, standing is only allowed
+             * if enough space exists above the player.
              */
             if (CanStandUp())
             {
@@ -422,8 +417,9 @@ public class PlayerMovement : MonoBehaviour
                 targetHeight,
                 crouchTransitionSpeed * Time.deltaTime);
 
-        // Start from the original standing center.
-        Vector3 targetCenter = standingCenter;
+        // Begin from the normal standing center.
+        Vector3 targetCenter =
+            standingCenter;
 
         // Calculate how much shorter the controller currently is.
         float heightDifference =
@@ -431,10 +427,10 @@ public class PlayerMovement : MonoBehaviour
             characterController.height;
 
         /*
-         * Move the center downward by half the height difference.
+         * Move the controller center downward by half the height change.
          *
-         * This keeps the bottom of the CharacterController near
-         * the floor as its height changes.
+         * This keeps the bottom of the CharacterController close
+         * to the ground during the transition.
          */
         targetCenter.y =
             standingCenter.y -
@@ -448,42 +444,45 @@ public class PlayerMovement : MonoBehaviour
 
     private bool CanStandUp()
     {
-        // Calculate the extra vertical space required to stand.
+        // Calculate how much additional vertical space is required.
         float extraHeightNeeded =
             standingHeight -
             characterController.height;
 
-        // No physics check is needed if already effectively standing.
+        // Skip the physics check if already effectively standing.
         if (extraHeightNeeded <= 0.01f)
         {
             return true;
         }
 
-        // Find the CharacterController center in world space.
+        // Find the CharacterController's current center in world space.
         Vector3 controllerCenter =
             transform.TransformPoint(
                 characterController.center);
 
-        // Find the current top of the CharacterController.
+        // Find the top of the current CharacterController.
         float currentTop =
             controllerCenter.y +
             (characterController.height / 2f);
 
-        // Begin the overhead check from the current top.
+        // Begin the overhead check at the current top.
         Vector3 checkStart =
             new Vector3(
                 controllerCenter.x,
                 currentTop,
                 controllerCenter.z);
 
-        // Use a slightly smaller radius to avoid edge sensitivity.
+        // Use a slightly smaller radius to prevent edge sensitivity.
         float checkRadius =
             Mathf.Max(
                 0.01f,
                 characterController.radius -
                 headroomCheckPadding);
 
-        // Check the additional space needed for the player to stand.
+        /*
+         * Check the space the CharacterController needs in order
+         * to expand back to standing height.
+         */
         bool blocked =
             Physics.SphereCast(
                 checkStart,
@@ -495,7 +494,7 @@ public class PlayerMovement : MonoBehaviour
                 headroomLayerMask,
                 QueryTriggerInteraction.Ignore);
 
-        // Standing is safe only when nothing blocks the required space.
+        // Standing is allowed only when the required space is clear.
         return !blocked;
     }
 
@@ -506,7 +505,7 @@ public class PlayerMovement : MonoBehaviour
 
     private void HandleGravity()
     {
-        // Maintain slight downward pressure while grounded.
+        // Maintain a small downward force while grounded.
         if (characterController.isGrounded)
         {
             if (verticalVelocity < 0f)
@@ -517,7 +516,7 @@ public class PlayerMovement : MonoBehaviour
         }
         else
         {
-            // Apply gravity continuously while airborne.
+            // Continuously apply gravity while airborne.
             verticalVelocity +=
                 gravity * Time.deltaTime;
         }
