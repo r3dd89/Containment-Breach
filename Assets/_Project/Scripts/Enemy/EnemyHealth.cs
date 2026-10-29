@@ -1,55 +1,76 @@
 using UnityEngine;
+using UnityEngine.AI;
 
 /*
  * Script Name: EnemyHealth
  * Purpose:
- * Handles the runtime health of an enemy.
+ * Handles runtime enemy health and the initial enemy death state.
  *
- * This script reads the enemy's maximum health
- * from an EnemyData ScriptableObject.
+ * This script reads maximum health from the assigned
+ * EnemyData ScriptableObject.
  *
- * It currently handles:
- * - Loading starting health from EnemyData
- * - Tracking current health
- * - Receiving damage
- * - Detecting when the enemy dies
+ * Current responsibilities:
+ * - Initialize enemy health.
+ * - Receive damage.
+ * - Prevent health from dropping below zero.
+ * - Detect enemy death.
+ * - Stop enemy AI behavior after death.
+ * - Stop NavMesh movement after death.
  *
- * Later, this script can be expanded to:
- * - Play hit reactions
- * - Play death animations
- * - Drop loot
- * - Notify the enemy AI system
- * - Notify encounter managers or facility systems
+ * TODO:
+ * - Play hit reactions.
+ * - Play death animations.
+ * - Disable or modify collision after the death animation.
+ * - Play death audio.
+ * - Spawn loot when appropriate.
+ * - Notify encounter systems.
  */
 
 public class EnemyHealth : MonoBehaviour
 {
     #region Data References
 
-    /*
-     * REGION: Data References
-     *
-     * This region stores references to data assets
-     * that describe what kind of enemy this is.
-     */
-
     [Header("Enemy Data")]
 
     [SerializeField]
-    [Tooltip("The EnemyData asset that contains this enemy type's configuration.")]
+    [Tooltip("The EnemyData asset containing this enemy type's configuration.")]
     private EnemyData enemyData;
 
     #endregion
 
 
-    #region Runtime Health
+    #region Component References
 
-    /*
-     * REGION: Runtime Health
-     *
-     * These values represent the enemy's health
-     * while the game is running.
-     */
+    [Header("Component References")]
+
+    [SerializeField]
+    [Tooltip("Controls the enemy's target and runtime combat data.")]
+    private EnemyController enemyController;
+
+    [SerializeField]
+    [Tooltip("Handles visual detection of the player.")]
+    private EnemyDetection enemyDetection;
+
+    [SerializeField]
+    [Tooltip("Handles NavMesh movement for enemy AI states.")]
+    private EnemyMovement enemyMovement;
+
+    [SerializeField]
+    [Tooltip("Handles enemy attacks against the player.")]
+    private EnemyAttack enemyAttack;
+
+    [SerializeField]
+    [Tooltip("Controls transitions between enemy AI states.")]
+    private EnemyStateMachine enemyStateMachine;
+
+    [SerializeField]
+    [Tooltip("NavMeshAgent used to move the enemy through the environment.")]
+    private NavMeshAgent navMeshAgent;
+
+    #endregion
+
+
+    #region Runtime Health
 
     [Header("Runtime Health")]
 
@@ -57,48 +78,40 @@ public class EnemyHealth : MonoBehaviour
     [Tooltip("The enemy's current health during gameplay.")]
     private float currentHealth;
 
+    [SerializeField]
+    [Tooltip("True after the enemy has entered its death state.")]
+    private bool isDead;
+
     #endregion
 
 
     #region Public Properties
-
-    /*
-     * REGION: Public Properties
-     *
-     * These properties allow other scripts
-     * to safely read health information.
-     */
 
     public float CurrentHealth
     {
         get { return currentHealth; }
     }
 
+
     public float MaxHealth
     {
         get
         {
-            // Return the maximum health stored
-            // inside the assigned EnemyData asset.
             if (enemyData != null)
             {
                 return enemyData.MaxHealth;
             }
 
-            // Return zero if no EnemyData asset exists.
             return 0f;
         }
     }
 
+
     public bool IsDead
     {
-        get
-        {
-            // The enemy is considered dead
-            // when its health reaches zero.
-            return currentHealth <= 0f;
-        }
+        get { return isDead; }
     }
+
 
     public EnemyData EnemyData
     {
@@ -110,27 +123,59 @@ public class EnemyHealth : MonoBehaviour
 
     #region Unity Methods
 
-    /*
-     * REGION: Unity Methods
-     *
-     * Unity automatically calls these methods.
-     */
-
     private void Awake()
     {
-        // Make sure an EnemyData asset
-        // has been assigned in the Inspector.
+        // Verify that this enemy has configuration data.
         if (enemyData == null)
         {
             Debug.LogError(
-                "EnemyHealth on " + gameObject.name +
-                " does not have an EnemyData asset assigned."
-            );
+                "EnemyHealth on " +
+                gameObject.name +
+                " does not have an EnemyData asset assigned.");
 
             return;
         }
 
-        // Start the enemy at full health.
+        // Find enemy components automatically if explicit Inspector
+        // references were not assigned.
+        if (enemyController == null)
+        {
+            enemyController =
+                GetComponent<EnemyController>();
+        }
+
+        if (enemyDetection == null)
+        {
+            enemyDetection =
+                GetComponent<EnemyDetection>();
+        }
+
+        if (enemyMovement == null)
+        {
+            enemyMovement =
+                GetComponent<EnemyMovement>();
+        }
+
+        if (enemyAttack == null)
+        {
+            enemyAttack =
+                GetComponent<EnemyAttack>();
+        }
+
+        if (enemyStateMachine == null)
+        {
+            enemyStateMachine =
+                GetComponent<EnemyStateMachine>();
+        }
+
+        if (navMeshAgent == null)
+        {
+            navMeshAgent =
+                GetComponent<NavMeshAgent>();
+        }
+
+        // Start this enemy alive and at full health.
+        isDead = false;
         currentHealth = enemyData.MaxHealth;
     }
 
@@ -139,48 +184,36 @@ public class EnemyHealth : MonoBehaviour
 
     #region Damage Methods
 
-    /*
-     * REGION: Damage Methods
-     *
-     * This region handles damage received by the enemy.
-     */
-
     public void TakeDamage(float damageAmount)
     {
         /*
-         * Do nothing if the enemy is already dead.
+         * Dead enemies cannot receive additional gameplay damage.
          *
-         * This prevents multiple damage events
-         * from repeatedly triggering death behavior.
+         * This also prevents death behavior from being triggered
+         * more than once.
          */
-        if (IsDead)
+        if (isDead)
         {
             return;
         }
 
-        /*
-         * Ignore zero or negative damage values.
-         *
-         * Damage should never accidentally
-         * increase the enemy's health.
-         */
+        // Ignore invalid damage values.
         if (damageAmount <= 0f)
         {
             return;
         }
 
-        // Subtract the incoming damage.
+        // Apply incoming damage.
         currentHealth -= damageAmount;
 
-        // Prevent health from dropping below zero
-        // or exceeding the enemy's maximum health.
-        currentHealth = Mathf.Clamp(
-            currentHealth,
-            0f,
-            MaxHealth
-        );
+        // Keep health inside its valid range.
+        currentHealth =
+            Mathf.Clamp(
+                currentHealth,
+                0f,
+                MaxHealth);
 
-        // Check whether this damage killed the enemy.
+        // Enter the death state when health reaches zero.
         if (currentHealth <= 0f)
         {
             Die();
@@ -192,34 +225,84 @@ public class EnemyHealth : MonoBehaviour
 
     #region Death Methods
 
-    /*
-     * REGION: Death Methods
-     *
-     * This region handles what happens
-     * when the enemy reaches zero health.
-     */
-
     private void Die()
     {
+        // Prevent death logic from running more than once.
+        if (isDead)
+        {
+            return;
+        }
+
+        // Mark the enemy dead before shutting down other systems.
+        isDead = true;
+
         /*
-         * For now, this message confirms
-         * that enemy death was detected correctly.
+         * Stop NavMesh movement first.
          *
-         * The GameObject is not destroyed yet.
+         * Clearing the current path prevents the agent from retaining
+         * an active navigation destination after death.
+         */
+        if (navMeshAgent != null &&
+            navMeshAgent.enabled)
+        {
+            if (navMeshAgent.isOnNavMesh)
+            {
+                navMeshAgent.isStopped = true;
+
+                if (navMeshAgent.hasPath)
+                {
+                    navMeshAgent.ResetPath();
+                }
+            }
+
+            // Disable the agent completely after movement has stopped.
+            navMeshAgent.enabled = false;
+        }
+
+        /*
+         * Disable the AI behavior components.
          *
-         * Later this method can trigger:
-         * - A death animation
-         * - AI shutdown
-         * - Collider changes
-         * - Loot drops
-         * - Audio
-         * - Encounter notifications
+         * EnemyHealth itself remains active so other gameplay systems
+         * can still query the corpse's health/death state.
+         */
+        if (enemyAttack != null)
+        {
+            enemyAttack.enabled = false;
+        }
+
+        if (enemyDetection != null)
+        {
+            enemyDetection.enabled = false;
+        }
+
+        if (enemyMovement != null)
+        {
+            enemyMovement.enabled = false;
+        }
+
+        if (enemyStateMachine != null)
+        {
+            enemyStateMachine.enabled = false;
+        }
+
+        if (enemyController != null)
+        {
+            enemyController.enabled = false;
+        }
+
+        /*
+         * Keep the enemy GameObject and collider in the scene for now.
+         *
+         * A later animation pass can:
+         * - Trigger the death animation.
+         * - Change corpse collision.
+         * - Add ragdoll behavior if desired.
+         * - Remove the corpse after an appropriate delay.
          */
 
         Debug.Log(
             enemyData.EnemyName +
-            " has died."
-        );
+            " has died.");
     }
 
     #endregion
